@@ -1,0 +1,129 @@
+/* --- การตั้งค่าพื้นฐาน --- */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background-color: #121212; /* พื้นหลังสีดำ */
+  color: #e0e0e0; /* ตัวหนังสือสีขาวนวล */
+  margin: 0;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden; /* ป้องกันการ scroll ของ body */
+}
+
+/* --- Layout หลัก --- */
+.app-container {
+  width: 100%;
+  height: 100vh; /* เต็มความสูงจอ */
+  background-color: #1e1e1e; /* สีพื้นหลังแอปเข้มกว่า body เล็กน้อย */
+  display: flex;
+  flex-direction: column;
+}
+
+/* --- หน้าต่างแชท --- */
+.chat-window {
+  flex-grow: 1; /* ทำให้ element นี้ขยายจนเต็มพื้นที่ที่เหลือ */
+  padding: 20px;
+  overflow-y: auto; /* มี scrollbar เฉพาะส่วนนี้เมื่อข้อความยาวเกิน */
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* --- กล่องข้อความ --- */
+.message {
+  padding: 12px 18px;
+  border-radius: 20px;
+  max-width: 75%;
+  word-wrap: break-word;
+  line-height: 1.5;
+}
+
+.message p {
+  margin: 0;
+}
+
+.message.user {
+  background-color: #043389; /* สีฟ้าสดใส */
+  color: white;
+  align-self: flex-end;
+  border-bottom-right-radius: 5px;
+}
+
+.message.ai {
+  background-color: #333333; /* สีเทาเข้ม */
+  color: #f5f5f5;
+  align-self: flex-start;
+  border-bottom-left-radius: 5px;
+}
+
+/* --- สไตล์สำหรับ Markdown ที่ถูก render --- */
+.message.ai h1, .message.ai h2, .message.ai h3 {
+  margin-top: 0;
+}
+.message.ai ul, .message.ai ol {
+  padding-left: 20px;
+}
+.message.ai code {
+  background-color: #444;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'Courier New', Courier, monospace;
+}
+.message.ai pre {
+  background-color: #282c34;
+  padding: 10px;
+  border-radius: 8px;
+  overflow-x: auto;
+}
+.message.ai pre code {
+  background-color: transparent;
+  padding: 0;
+}
+
+
+/* --- ฟอร์มพิมพ์ข้อความ --- */
+.chat-input-form {
+  display: flex;
+  padding: 15px;
+  border-top: 1px solid #333; /* เส้นขอบสีเทาเข้ม */
+  background-color: #1e1e1e;
+}
+
+.chat-input-form input {
+  flex-grow: 1;
+  background-color: #333333;
+  color: #f5f5f5;
+  border: 1px solid #444;
+  border-radius: 20px;
+  padding: 12px 18px;
+  font-size: 16px;
+  margin-right: 10px;
+}
+
+.chat-input-form input:focus {
+  outline: none;
+  border-color: #062050;
+}
+
+.chat-input-form button {
+  background-color: #377dff;
+  color: white;
+  border: none;
+  border-radius: 20px;
+  padding: 12px 24px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.chat-input-form button:hover {
+  background-color: #2b68d9;
+}
+
+.chat-input-form button:disabled {
+  background-color: #555;
+  cursor: not-allowed;
+}
