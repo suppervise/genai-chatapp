@@ -1,79 +1,161 @@
-import { useState, FormEvent, useEffect, useRef} from 'react';
-import axios from 'axios';
-import './App.css'; // นำเข้าไฟล์ CSS สำหรับตกแต่ง
+import { useState, FormEvent, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
+import './App.css';
+
+// ไอคอนสำหรับปุ่ม New Chat (สามารถใช้รูปภาพหรือ SVG อื่นๆ ได้)
+const NewChatIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
 
 
-// กำหนด Type สำหรับหน้าตาของแต่ละข้อความ
 interface Message {
   sender: 'user' | 'ai';
   text: string;
 }
 
-function App() {
-  // State 1: เก็บข้อความที่ผู้ใช้กำลังพิมพ์อยู่
-  const [prompt, setPrompt] = useState<string>('');
-  // State 2: เก็บประวัติการแชททั้งหมด เป็น Array ของ Message
-  const [chatHistory, setChatHistory] = useState<Message[]>([]);
-  // State 3: สถานะการโหลด (เมื่อกำลังรอคำตอบจาก AI)
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const chatWindowRef = useRef<HTMLDivElement>(null); // สร้าง ref สำหรับอ้างอิงถึงหน้าต่างแชท
+// รายการโมเดลที่มีให้เลือก
+const availableModels = [
+  { id: 'gemini-1.5-flash-latest', name: 'Gemini 1.5 Flash (เร็ว)' },
+  { id: 'gemini-1.5-pro-latest', name: 'Gemini 1.5 Pro (ฉลาด)' },
+];
 
-   // ฟังก์ชันสำหรับเลื่อนลงล่างสุดอัตโนมัติ
+function App() {
+  const [prompt, setPrompt] = useState<string>('');
+  const [chatHistory, setChatHistory] = useState<Message[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [selectedModel, setSelectedModel] = useState<string>(availableModels[0].id);
+  const chatWindowRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     if (chatWindowRef.current) {
       chatWindowRef.current.scrollTop = chatWindowRef.current.scrollHeight;
     }
-  }, [chatHistory, isLoading]); // ทำงานทุกครั้งที่ chatHistory หรือ isLoading เปลี่ยน
+  }, [chatHistory]);
 
-  // ฟังก์ชันที่จะทำงานเมื่อผู้ใช้กดส่งฟอร์ม
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault(); // ป้องกันไม่ให้หน้าเว็บรีโหลด
-    if (!prompt.trim() || isLoading) return; // ถ้าไม่ได้พิมพ์อะไรมา หรือกำลังโหลดอยู่ ก็ไม่ต้องทำอะไร
-
-    // 1. สร้างข้อความของผู้ใช้และเพิ่มเข้าไปในประวัติการแชท
-    const userMessage: Message = { sender: 'user', text: prompt };
-    setChatHistory(prev => [...prev, userMessage]);
-    const currentPrompt = prompt; // เก็บ prompt ปัจจุบันไว้ใช้
-    setPrompt(''); // เคลียร์ช่องพิมพ์
-    setIsLoading(true); // เริ่มสถานะโหลด
-
-    try {
-      // 2. ส่ง Request ไปยัง Backend API ของเรา
-      const response = await axios.post('http://127.0.0.1:8000/generate-response', {
-        prompt: prompt, // ส่ง prompt ที่ผู้ใช้พิมพ์ไปใน body
-      });
-
-      // 3. สร้างข้อความของ AI และเพิ่มเข้าไปในประวัติการแชท
-      const aiMessage: Message = { sender: 'ai', text: response.data.response };
-      setChatHistory(prev => [...prev, aiMessage]);
-
-    } catch (error) {
-      // 4. หากมีข้อผิดพลาด
-      console.error("Error fetching AI response:", error);
-      const errorMessage: Message = { sender: 'ai', text: "Sorry, something went wrong. Please try again." };
-      setChatHistory(prev => [...prev, errorMessage]);
-    } finally {
-      setIsLoading(false); // หยุดสถานะโหลด ไม่ว่าจะสำเร็จหรือล้มเหลว
-    }
+  const handleNewChat = () => {
+    setChatHistory([]);
   };
+const handleSubmit = async (e: FormEvent) => {
+  e.preventDefault();
+  if (!prompt.trim() || isLoading) return;
+
+  const userMessage: Message = { sender: 'user', text: prompt };
+  setChatHistory(prev => [...prev, userMessage]);
+
+  const aiMessagePlaceholder: Message = { sender: 'ai', text: '' };
+  setChatHistory(prev => [...prev, aiMessagePlaceholder]);
+
+  const currentPrompt = prompt;
+  setPrompt('');
+  setIsLoading(true);
+
+  try {
+    const response = await fetch('http://127.0.0.1:8000/generate-stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: currentPrompt, model: selectedModel }),
+    });
+
+    if (!response.body) return;
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let done = false;
+    let buffer = '';
+
+    while (!done) {
+      const { value, done: readerDone } = await reader.read();
+      done = readerDone;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      const parts = buffer.split('\n\n');
+
+      for (let i = 0; i < parts.length - 1; i++) {
+        const line = parts[i];
+        if (line.startsWith('data: ')) {
+          const dataStr = line.substring(6);
+          if (dataStr.trim()) {
+            const data = JSON.parse(dataStr);
+            if (data.text) {
+              setChatHistory(prev =>
+                prev.map((msg, idx) =>
+                  idx === prev.length - 1 && msg.sender === 'ai'
+                    ? { ...msg, text: msg.text + data.text }
+                    : msg
+                )
+              );
+            } else if (data.error) {
+              console.error('Streaming Error:', data.error);
+              setChatHistory(prev =>
+                prev.map((msg, idx) =>
+                  idx === prev.length - 1 && msg.sender === 'ai'
+                    ? { ...msg, text: data.error }
+                    : msg
+                )
+              );
+            }
+          }
+        }
+      }
+
+      buffer = parts[parts.length - 1];
+    }
+  } catch (error) {
+    console.error('Error fetching AI stream response:', error);
+    setChatHistory(prev =>
+      prev.map((msg, idx) =>
+        idx === prev.length - 1 && msg.sender === 'ai'
+          ? { ...msg, text: 'Sorry, something went wrong with the connection. Please try again.' }
+          : msg
+      )
+    );
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   return (
- <div className="app-container">
-      {/* เพิ่ม ref ที่นี่ */}
+    <div className="app-container">
+      {/* --- ส่วน Header ที่เพิ่มเข้ามาใหม่ --- */}
+      <div className="app-header">
+        <button onClick={handleNewChat} className="new-chat-btn">
+          <NewChatIcon /> New Chat
+        </button>
+        <div className="model-selector">
+          <label htmlFor="model-select">Model:</label>
+          <select 
+            id="model-select" 
+            value={selectedModel} 
+            onChange={e => setSelectedModel(e.target.value)}
+            disabled={isLoading}
+          >
+            {availableModels.map(model => (
+              <option key={model.id} value={model.id}>
+                {model.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      
       <div className="chat-window" ref={chatWindowRef}>
         {chatHistory.map((msg, index) => (
           <div key={index} className={`message ${msg.sender}`}>
-            {/* 2. ใช้ ReactMarkdown แทน <p> สำหรับข้อความจาก AI */}
-            {msg.sender === 'ai' ? (
-              <ReactMarkdown>{msg.text}</ReactMarkdown>
-            ) : (
-              <p>{msg.text}</p> // ข้อความ user ยังใช้ <p> เหมือนเดิม
-            )}
+            <ReactMarkdown>{msg.text}</ReactMarkdown>
           </div>
         ))}
-    {isLoading && <div className="message ai"><p>AI is thinking...</p></div>}
-      </div><br></br>
+        {isLoading && chatHistory[chatHistory.length - 1]?.text === '' && (
+          <div className="message ai">
+            <div className="typing-indicator">
+              <span></span><span></span><span></span>
+            </div>
+          </div>
+        )}
+      </div>
+      
       <form className="chat-input-form" onSubmit={handleSubmit}>
         <input
           type="text"
@@ -82,7 +164,7 @@ function App() {
           placeholder="Ask me anything..."
           disabled={isLoading}
         />
-        <button type="submit" disabled={isLoading}>Send</button>
+        <button type="submit" disabled={isLoading || !prompt.trim()}>Send</button>
       </form>
     </div>
   );

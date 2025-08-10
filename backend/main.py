@@ -1,69 +1,87 @@
 import os
+import json
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from google import genai
-
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from typing import Generator
+from typing import AsyncGenerator # *** เปลี่ยนเป็น AsyncGenerator ***
 
-# โหลดตัวแปร environment จากไฟล์ .env
+# --- ส่วน Setup เหมือนเดิม ---
 load_dotenv()
-
-# ดึง API key จาก environment variable
 API_KEY = os.getenv("GEMINI_API_KEY")
 if not API_KEY:
     raise RuntimeError("GEMINI_API_KEY environment variable not set")
 
-# --- การแก้ไขที่ถูกต้องตามที่คุณแนะนำ ---
-# สร้าง client สำหรับ Google GenAI SDK โดยตรง
 client = genai.Client(api_key=API_KEY)
-# -------------------------------------
-
-# สร้าง FastAPI app
 app = FastAPI(title="GenAI Chat App API")
 
-origins = [
-    "http://localhost:5173",
-]
-
+origins = ["http://localhost:5173"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # อนุญาตเฉพาะ origins ที่อยู่ในลิสต์
-    allow_credentials=True, # อนุญาตให้ใช้ cookies (เผื่ออนาคต)
-    allow_methods=["*"],    # อนุญาตให้ใช้ HTTP methods ทั้งหมด (GET, POST, etc.)
-    allow_headers=["*"],    # อนุญาตให้มี HTTP headers ทั้งหมด
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
-# -----------------------------
 
-# สร้าง schema สำหรับรับข้อมูล JSON
+# --- แก้ไข PromptRequest ให้รับชื่อ Model ด้วย ---
+class StreamPromptRequest(BaseModel):
+    prompt: str
+    model: str # รับชื่อโมเดลจาก Frontend
+
+# *** เปลี่ยนเป็น async def ***
+async def stream_generator(prompt: str, model_name: str) -> AsyncGenerator[str, None]:
+    """
+    ฟังก์ชันเรียก Gemini API แบบ stream และ yield ข้อความทีละส่วน
+    """
+    try:
+        # --- การแก้ไข: เปลี่ยนไปใช้ generate_content_stream ---
+        # เมธอดนี้เป็น async ดังนั้นเราจึงต้องใช้ 'async for'
+        async for chunk in await client.aio.models.generate_content_stream(
+            
+            model=model_name,
+            contents=[prompt],
+            # ไม่ต้องมี stream=True อีกต่อไป
+        ):
+            if hasattr(chunk, "text") and chunk.text:
+                data = json.dumps({"text": chunk.text})
+                yield f"data: {data}\n\n"
+
+    except Exception as e:
+        print(f"An error occurred during streaming: {e}")
+        error_message = json.dumps({"error": f"Error from AI Model: {e}"})
+        yield f"data: {error_message}\n\n"
+
+# --- Endpoint ใหม่สำหรับ Streaming ---
+@app.post("/generate-stream")
+async def generate_stream(request: StreamPromptRequest):
+    """
+    Endpoint รับ prompt และ model แล้วส่งผลลัพธ์แบบ stream กลับไป
+    """
+    return StreamingResponse(
+        stream_generator(request.prompt, request.model),
+        media_type="text/event-stream" # Media type สำคัญสำหรับ Streaming
+    )
+
+# --- Endpoint เดิมยังคงไว้ (เผื่อต้องการใช้) แต่เราจะเน้นใช้ตัวใหม่ ---
 class PromptRequest(BaseModel):
     prompt: str
-    
 
-# ฟังก์ชันเรียกใช้งาน Google GenAI
-def generate_text(prompt: str) -> str:
-    try:
-        # --- การแก้ไขที่ถูกต้องตามที่คุณแนะนำ ---
-        response = client.models.generate_content(
-            model="gemini-1.5-flash-latest", # ขออนุญาตใช้ latest เพื่อให้ได้เวอร์ชันใหม่เสมอ
-            contents=[prompt]  # ส่งเป็น list ตามโครงสร้างที่ถูกต้อง
-        )
-        # -------------------------------------
-        return response.text
-    except Exception as e:
-        print(f"An error occurred with the GenAI API: {e}")
-        raise RuntimeError(f"GenAI API error: {e}")
-
-# สร้าง API endpoint รับ POST /generate-response
 @app.post("/generate-response")
 async def generate_response(request: PromptRequest):
     try:
-        result = generate_text(request.prompt)
-        return {"response": result}
+        response = client.models.generate_content(
+            model="gemini-1.5-flash-latest",
+            contents=[request.prompt]
+        )
+        return {"response": response.text}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# (ส่วน uvicorn runner เหมือนเดิม)
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
