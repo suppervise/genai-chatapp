@@ -1,6 +1,7 @@
 import { useState, FormEvent, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import './App.css';
+import axios from 'axios'; // เราจะใช้ axios สำหรับ GET request ง่ายๆ
 
 // ไอคอนสำหรับปุ่ม New Chat (สามารถใช้รูปภาพหรือ SVG อื่นๆ ได้)
 const NewChatIcon = () => (
@@ -15,6 +16,12 @@ interface Message {
   text: string;
 }
 
+// สร้าง Type สำหรับ Prompt Library
+interface PromptTemplate {
+  title: string;
+  prompt: string;
+}
+
 // รายการโมเดลที่มีให้เลือก
 const availableModels = [
   { id: 'gemini-1.5-flash-latest', name: 'Gemini 1.5 Flash (เร็ว)' },
@@ -27,6 +34,21 @@ function App() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [selectedModel, setSelectedModel] = useState<string>(availableModels[0].id);
   const chatWindowRef = useRef<HTMLDivElement>(null);
+
+  const [promptLibrary, setPromptLibrary] = useState<PromptTemplate[]>([]); // <-- State ใหม่สำหรับเก็บคลังพร้อมท์
+
+  // --- การเปลี่ยนแปลงสำคัญ: ใช้ useEffect ดึงข้อมูล Prompt ตอนเริ่ม ---
+  useEffect(() => {
+    const fetchPrompts = async () => {
+      try {
+        const response = await axios.get('http://127.0.0.1:8000/get-prompts');
+        setPromptLibrary(response.data);
+      } catch (error) {
+        console.error("Could not fetch prompt library:", error);
+      }
+    };
+    fetchPrompts();
+  }, []); // dependency array ว่างเปล่า หมายถึงให้ทำงานแค่ครั้งเดียวตอน component โหลด
 
   useEffect(() => {
     if (chatWindowRef.current) {
@@ -50,7 +72,7 @@ const handleSubmit = async (e: FormEvent) => {
   const historyForApi = [...chatHistory, userMessage];
 
     // อัปเดต UI ทันที
-  setChatHistory(prev => [...prev, userMessage, { sender: 'ai', text: '' }]);
+  setChatHistory(prev => [...prev, userMessage, { sender: 'ai', text: '' }])
 
 // 
   // const aiMessagePlaceholder: Message = { sender: 'ai', text: '' };
@@ -127,6 +149,12 @@ const handleSubmit = async (e: FormEvent) => {
   }
 };
 
+// 3. ฟังก์ชันจัดการเลือก prompt จาก select
+const handleSelectPrompt = (selectedPrompt: string) => {
+  setPrompt(selectedPrompt); // ตั้ง prompt ใน input
+};
+
+
   return (
     <div className="app-container">
       {/* --- ส่วน Header ที่เพิ่มเข้ามาใหม่ --- */}
@@ -145,6 +173,25 @@ const handleSubmit = async (e: FormEvent) => {
             {availableModels.map(model => (
               <option key={model.id} value={model.id}>
                 {model.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+          {/* --- เพิ่มแถบเครื่องมือใหม่สำหรับ Prompt Library --- */}
+      <div className="toolbar">
+        <div className="prompt-library-selector">
+          <label htmlFor="prompt-select">Prompt Library:</label>
+          <select 
+            id="prompt-select"
+            onChange={e => handleSelectPrompt(e.target.value)}
+            value="" // ทำให้เลือกซ้ำได้
+          >
+            <option value="" disabled>-- เลือกพร้อมท์สำเร็จรูป --</option>
+            {promptLibrary.map((p, index) => (
+              <option key={index} value={p.prompt}>
+                {p.title}
               </option>
             ))}
           </select>

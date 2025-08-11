@@ -65,6 +65,21 @@ async def stream_generator(history: List[Dict[str, str]], prompt: str, model_nam
         print(f"An error occurred during streaming: {e}")
         error_message = json.dumps({"error": f"Error from AI Model: {e}"})
         yield f"data: {error_message}\n\n"
+        
+# --- เพิ่ม Endpoint ใหม่สำหรับดึงข้อมูล Prompts ---
+@app.get("/get-prompts")
+async def get_prompts():
+    try:
+        # เปิดไฟล์ prompts.json ขึ้นมาอ่าน
+        with open("prompts.json", "r", encoding="utf-8") as f:
+            prompts = json.load(f)
+        return prompts
+    except FileNotFoundError:
+        # หากไม่พบไฟล์ ให้ส่ง List ว่างๆ กลับไปพร้อมกับแจ้งเตือน
+        raise HTTPException(status_code=404, detail="Prompts file not found.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
 
 # --- Endpoint ใหม่สำหรับ Streaming ---
 @app.post("/generate-stream")

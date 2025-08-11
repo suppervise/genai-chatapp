@@ -1,5 +1,9 @@
 # env files (can opt-in for committing if needed)
 .env*
+venv/
+node_modules/
+.DS_Store
+ dist/
 
 
 
