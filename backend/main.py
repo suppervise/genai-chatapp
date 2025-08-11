@@ -7,7 +7,7 @@ from google import genai
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from typing import Generator
-from typing import AsyncGenerator # *** เปลี่ยนเป็น AsyncGenerator ***
+from typing import AsyncGenerator,List,Dict # *** เปลี่ยนเป็น AsyncGenerator ***
 
 # --- ส่วน Setup เหมือนเดิม ---
 load_dotenv()
@@ -29,22 +29,33 @@ app.add_middleware(
 
 # --- แก้ไข PromptRequest ให้รับชื่อ Model ด้วย ---
 class StreamPromptRequest(BaseModel):
+    history: List[Dict[str, str]] # [{ "sender": "user/ai", "text": "..." }]
     prompt: str
     model: str # รับชื่อโมเดลจาก Frontend
 
 # *** เปลี่ยนเป็น async def ***
-async def stream_generator(prompt: str, model_name: str) -> AsyncGenerator[str, None]:
+async def stream_generator(history: List[Dict[str, str]], prompt: str, model_name: str) -> AsyncGenerator[str, None]:
     """
     ฟังก์ชันเรียก Gemini API แบบ stream และ yield ข้อความทีละส่วน
     """
     try:
-        # --- การแก้ไข: เปลี่ยนไปใช้ generate_content_stream ---
-        # เมธอดนี้เป็น async ดังนั้นเราจึงต้องใช้ 'async for'
+
+        # --- การเปลี่ยนแปลงสำคัญ: สร้าง 'contents' จาก history และ prompt ใหม่ ---
+        # 1. แปลง history ของเราให้เป็นรูปแบบที่ Gemini เข้าใจ
+        #    - sender 'user' -> role 'user'
+        #    - sender 'ai'   -> role 'model'
+        contents = []
+        for message in history:
+            role = "user" if message["sender"] == "user" else "model"
+            contents.append({'role': role, 'parts': [{'text': message["text"]}]})
+        
+        # 2. เพิ่ม prompt ล่าสุดของผู้ใช้เข้าไป
+        contents.append({'role': 'user', 'parts': [{'text': prompt}]})
+
+         # --- เรียก API ด้วย 'contents' ที่มีประวัติทั้งหมด ---
         async for chunk in await client.aio.models.generate_content_stream(
-            
             model=model_name,
-            contents=[prompt],
-            # ไม่ต้องมี stream=True อีกต่อไป
+            contents=contents, # ส่งประวัติทั้งหมดเข้าไปที่นี่
         ):
             if hasattr(chunk, "text") and chunk.text:
                 data = json.dumps({"text": chunk.text})
@@ -62,7 +73,7 @@ async def generate_stream(request: StreamPromptRequest):
     Endpoint รับ prompt และ model แล้วส่งผลลัพธ์แบบ stream กลับไป
     """
     return StreamingResponse(
-        stream_generator(request.prompt, request.model),
+        stream_generator(request.history,request.prompt, request.model),
         media_type="text/event-stream" # Media type สำคัญสำหรับ Streaming
     )
 

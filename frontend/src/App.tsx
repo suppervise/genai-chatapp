@@ -37,16 +37,25 @@ function App() {
   const handleNewChat = () => {
     setChatHistory([]);
   };
+
+
 const handleSubmit = async (e: FormEvent) => {
   e.preventDefault();
   if (!prompt.trim() || isLoading) return;
 
   const userMessage: Message = { sender: 'user', text: prompt };
-  setChatHistory(prev => [...prev, userMessage]);
 
-  const aiMessagePlaceholder: Message = { sender: 'ai', text: '' };
-  setChatHistory(prev => [...prev, aiMessagePlaceholder]);
+  // สร้าง history ที่จะส่งไปให้ backend จาก state ปัจจุบัน
+  // เราไม่ส่งข้อความ AI ที่ว่างเปล่าเข้าไปใน history
+  const historyForApi = [...chatHistory, userMessage];
 
+    // อัปเดต UI ทันที
+  setChatHistory(prev => [...prev, userMessage, { sender: 'ai', text: '' }]);
+
+// 
+  // const aiMessagePlaceholder: Message = { sender: 'ai', text: '' };
+  // setChatHistory(prev => [...prev, aiMessagePlaceholder]);
+// 
   const currentPrompt = prompt;
   setPrompt('');
   setIsLoading(true);
@@ -55,7 +64,8 @@ const handleSubmit = async (e: FormEvent) => {
     const response = await fetch('http://127.0.0.1:8000/generate-stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: currentPrompt, model: selectedModel }),
+      body: JSON.stringify({ history: historyForApi, prompt: currentPrompt, model: selectedModel }),
+
     });
 
     if (!response.body) return;
