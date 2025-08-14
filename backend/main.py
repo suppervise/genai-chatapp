@@ -31,7 +31,8 @@ client = genai.Client(api_key=API_KEY)
 app = FastAPI(title="GenAI Chat App API", version="1.1.0")
 
 # ตั้งค่า CORS Middleware
-origins = ["http://localhost:5173"]
+# origins = ["http://localhost:5173"]
+origins = ["http://localhost:5173", "https://chat-agent-inky.vercel.app", "https://chat-agent-7kcu2c9hq-boondees-projects.vercel.app"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
