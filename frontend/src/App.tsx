@@ -1,7 +1,9 @@
-import { useState, FormEvent, useEffect, useRef } from 'react';
+import { useState,type FormEvent, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import './App.css';
 import axios from 'axios'; // เราจะใช้ axios สำหรับ GET request ง่ายๆ
+
+
 
 // ไอคอนสำหรับปุ่ม New Chat (สามารถใช้รูปภาพหรือ SVG อื่นๆ ได้)
 const NewChatIcon = () => (
@@ -16,6 +18,14 @@ interface Message {
   text: string;
 }
 
+
+// Interface ใหม่สำหรับ Persona ที่รับมาจาก API
+interface PersonaTemplate {
+  id: string;
+  title: string;
+  history: Message[];
+}
+
 // สร้าง Type สำหรับ Prompt Library
 interface PromptTemplate {
   title: string;
@@ -26,6 +36,12 @@ interface PromptTemplate {
 const availableModels = [
   { id: 'gemini-1.5-flash-latest', name: 'Gemini 1.5 Flash (เร็ว)' },
   { id: 'gemini-1.5-pro-latest', name: 'Gemini 1.5 Pro (ฉลาด)' },
+   { id: 'gemini-2.0-flash', name: 'Gemini 2.0 flash (ฉลาด)' },
+];
+
+// ข้อความต้อนรับเริ่มต้นแบบกลางๆ
+const INITIAL_WELCOME: Message[] = [
+    { sender: 'ai', text: 'Hello! I am a helpful AI. How can I assist you today? You can also select a Persona from the dropdown list to start a new conversation.'}
 ];
 
 function App() {
@@ -34,6 +50,11 @@ function App() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [selectedModel, setSelectedModel] = useState<string>(availableModels[0].id);
   const chatWindowRef = useRef<HTMLDivElement>(null);
+  const [personaLibrary, setPersonaLibrary] = useState<PersonaTemplate[]>([]); // State เก็บ Persona
+
+  const [imageFile, setImageFile] = useState<File | null>(null); // State สำหรับเก็บไฟล์รูป
+  const [imagePreview, setImagePreview] = useState<string | null>(null); // State สำหรับเก็บ URL ภาพตัวอย่าง
+  const fileInputRef = useRef<HTMLInputElement>(null); // Ref สำหรับ input file ที่ซ่อนอยู่
 
   const [promptLibrary, setPromptLibrary] = useState<PromptTemplate[]>([]); // <-- State ใหม่สำหรับเก็บคลังพร้อมท์
 
@@ -41,7 +62,7 @@ function App() {
   useEffect(() => {
     const fetchPrompts = async () => {
       try {
-        const response = await axios.get('http://127.0.0.1:8000/get-prompts');
+        const response = await axios.get('api/get-prompts');
         setPromptLibrary(response.data);
       } catch (error) {
         console.error("Could not fetch prompt library:", error);
@@ -49,6 +70,21 @@ function App() {
     };
     fetchPrompts();
   }, []); // dependency array ว่างเปล่า หมายถึงให้ทำงานแค่ครั้งเดียวตอน component โหลด
+
+   // --- useEffect Hooks ---
+  // ดึงข้อมูล Persona Library เมื่อแอปโหลด
+  useEffect(() => {
+    const fetchPersonas = async () => {
+      try {
+        const response = await axios.get<PersonaTemplate[]>('api/get-prompts');
+        setPersonaLibrary(response.data);
+      } catch (error) {
+        console.error("Could not fetch persona library:", error);
+      }
+    };
+    fetchPersonas();
+  }, []);
+
 
   useEffect(() => {
     if (chatWindowRef.current) {
@@ -59,34 +95,66 @@ function App() {
   const handleNewChat = () => {
     setChatHistory([]);
   };
+   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setImageFile(file);
+      setImagePreview(URL.createObjectURL(file)); // สร้าง URL ชั่วคราวสำหรับแสดงภาพ
+    }
+  };
 
+    // หัวใจของการเปลี่ยนแปลง: Handler สำหรับเลือก Persona
+  const handleSelectPersona = (personaId: string) => {
+    if (!personaId) return;
 
-const handleSubmit = async (e: FormEvent) => {
-  e.preventDefault();
-  if (!prompt.trim() || isLoading) return;
+    const selectedPersona = personaLibrary.find(p => p.id === personaId);
+    if (selectedPersona) {
+      setChatHistory(selectedPersona.history); // ตั้งค่า History ใหม่ทั้งหมด
+      setPrompt(''); // เคลียร์ช่อง input
+      removeImage(); // เคลียร์รูปภาพ
+    }
+  };
 
-  const userMessage: Message = { sender: 'user', text: prompt };
+  const removeImage = () => {
+    setImageFile(null);
+    setImagePreview(null);
+    if(fileInputRef.current) fileInputRef.current.value = ""; // เคลียร์ค่าใน input
+  };
 
-  // สร้าง history ที่จะส่งไปให้ backend จาก state ปัจจุบัน
-  // เราไม่ส่งข้อความ AI ที่ว่างเปล่าเข้าไปใน history
-  const historyForApi = [...chatHistory, userMessage];
+ const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if ((!prompt.trim() && !imageFile) || isLoading) return;
 
-    // อัปเดต UI ทันที
-  setChatHistory(prev => [...prev, userMessage, { sender: 'ai', text: '' }])
+    setIsLoading(true);
 
-// 
-  // const aiMessagePlaceholder: Message = { sender: 'ai', text: '' };
-  // setChatHistory(prev => [...prev, aiMessagePlaceholder]);
-// 
-  const currentPrompt = prompt;
-  setPrompt('');
-  setIsLoading(true);
+    // --- ขั้นตอนที่ 1: เตรียมข้อมูลที่จะส่ง ---
+    const formData = new FormData();
+    // ส่ง chatHistory *ปัจจุบัน* ไปก่อน
+    formData.append('history', JSON.stringify(chatHistory));
+    formData.append('prompt', prompt);
+    formData.append('model', selectedModel);
+    if (imageFile) {
+      formData.append('image', imageFile);
+    }
+
+    // --- ขั้นตอนที่ 2: อัปเดต UI ทันที ---
+    // สร้างข้อความของผู้ใช้ที่จะแสดงบนหน้าจอ
+    const userMessageText = imageFile ? `[Image Attached] ${prompt}` : prompt;
+    const userMessage: Message = { sender: 'user', text: userMessageText };
+    
+    // เพิ่มข้อความ user และ placeholder ของ AI เข้าไปใน state *ในครั้งเดียว*
+    setChatHistory(prev => [...prev, userMessage, { sender: 'ai', text: '' }]);
+    
+    // เคลียร์ input และรูปภาพ
+    setPrompt('');
+    removeImage();
+
 
   try {
-    const response = await fetch('http://127.0.0.1:8000/generate-stream', {
+    const response = await fetch('api/generate-stream', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ history: historyForApi, prompt: currentPrompt, model: selectedModel }),
+      body: formData, // ส่ง FormData แทน JSON.stringify
+      
 
     });
 
@@ -162,6 +230,22 @@ const handleSelectPrompt = (selectedPrompt: string) => {
         <button onClick={handleNewChat} className="new-chat-btn">
           <NewChatIcon /> New Chat
         </button>
+           {/* --- Dropdown สำหรับ Persona --- */}
+        <div className="persona-selector">
+          <label htmlFor="persona-select">Persona:</label>
+          <select 
+            id="persona-select"
+            onChange={e => handleSelectPersona(e.target.value)}
+            value="" // ใช้ value ว่างๆ เพื่อให้เลือกซ้ำได้
+          >
+            <option value="" disabled>-- Change Persona --</option>
+            {personaLibrary.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.title}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="model-selector">
           <label htmlFor="model-select">Model:</label>
           <select 
@@ -180,23 +264,6 @@ const handleSelectPrompt = (selectedPrompt: string) => {
       </div>
 
           {/* --- เพิ่มแถบเครื่องมือใหม่สำหรับ Prompt Library --- */}
-      <div className="toolbar">
-        <div className="prompt-library-selector">
-          <label htmlFor="prompt-select">Prompt Library:</label>
-          <select 
-            id="prompt-select"
-            onChange={e => handleSelectPrompt(e.target.value)}
-            value="" // ทำให้เลือกซ้ำได้
-          >
-            <option value="" disabled>-- เลือกพร้อมท์สำเร็จรูป --</option>
-            {promptLibrary.map((p, index) => (
-              <option key={index} value={p.prompt}>
-                {p.title}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
       
       <div className="chat-window" ref={chatWindowRef}>
         {chatHistory.map((msg, index) => (
@@ -211,18 +278,46 @@ const handleSelectPrompt = (selectedPrompt: string) => {
             </div>
           </div>
         )}
+</div>
+  {/* --- นี่คือโครงสร้างที่ถูกต้องสำหรับส่วน Input --- */}
+      <div className="input-area">
+        {imagePreview && (
+          <div className="image-preview-container">
+            <img src={imagePreview} alt="Preview" className="image-preview" />
+            <button onClick={removeImage} className="remove-image-btn">&times;</button>
+          </div>
+        )}
+        <form className="chat-input-form" onSubmit={handleSubmit}>
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handleImageChange} 
+              accept="image/*" 
+              style={{ display: 'none' }} 
+            />
+            <button 
+              type="button" 
+              onClick={() => fileInputRef.current?.click()} 
+              className="attach-btn"
+              title="Attach Image"
+            >
+              📎
+            </button>
+            <input
+              type="text"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder={imageFile ? "Describe the image or ask a question..." : "Ask me anything..."}
+              disabled={isLoading}
+            />
+            <button 
+              type="submit" 
+              disabled={isLoading || (!prompt.trim() && !imageFile)}
+            >
+              Send
+            </button>
+        </form>
       </div>
-      
-      <form className="chat-input-form" onSubmit={handleSubmit}>
-        <input
-          type="text"
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder="Ask me anything..."
-          disabled={isLoading}
-        />
-        <button type="submit" disabled={isLoading || !prompt.trim()}>Send</button>
-      </form>
     </div>
   );
 }

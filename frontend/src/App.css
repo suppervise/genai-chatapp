@@ -220,3 +220,52 @@ body {
   bottom: 0;
   width: 100%;
 }
+
+/* --- CSS สำหรับ Input Area และการอัปโหลดรูป --- */
+.input-area {
+  padding: 15px;
+  border-top: 1px solid #333;
+  background-color: #1e1e1e;
+}
+
+.image-preview-container {
+  position: relative;
+  display: inline-block;
+  margin-bottom: 10px;
+}
+
+.image-preview {
+  max-height: 100px;
+  border-radius: 8px;
+  border: 1px solid #555;
+}
+
+.remove-image-btn {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background: #333;
+  color: white;
+  border: 1px solid white;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  line-height: 18px;
+  text-align: center;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.chat-input-form {
+  padding: 0; /* ย้าย padding ไปที่ .input-area แล้ว */
+  border-top: none;
+}
+
+.attach-btn {
+  background: none;
+  border: none;
+  color: #8e8e8e;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0 10px;
+}
