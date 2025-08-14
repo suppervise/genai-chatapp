@@ -39,10 +39,6 @@ const availableModels = [
    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 flash (ฉลาด)' },
 ];
 
-// ข้อความต้อนรับเริ่มต้นแบบกลางๆ
-const INITIAL_WELCOME: Message[] = [
-    { sender: 'ai', text: 'Hello! I am a helpful AI. How can I assist you today? You can also select a Persona from the dropdown list to start a new conversation.'}
-];
 
 function App() {
   const [prompt, setPrompt] = useState<string>('');
@@ -56,20 +52,7 @@ function App() {
   const [imagePreview, setImagePreview] = useState<string | null>(null); // State สำหรับเก็บ URL ภาพตัวอย่าง
   const fileInputRef = useRef<HTMLInputElement>(null); // Ref สำหรับ input file ที่ซ่อนอยู่
 
-  const [promptLibrary, setPromptLibrary] = useState<PromptTemplate[]>([]); // <-- State ใหม่สำหรับเก็บคลังพร้อมท์
 
-  // --- การเปลี่ยนแปลงสำคัญ: ใช้ useEffect ดึงข้อมูล Prompt ตอนเริ่ม ---
-  useEffect(() => {
-    const fetchPrompts = async () => {
-      try {
-        const response = await axios.get('api/get-prompts');
-        setPromptLibrary(response.data);
-      } catch (error) {
-        console.error("Could not fetch prompt library:", error);
-      }
-    };
-    fetchPrompts();
-  }, []); // dependency array ว่างเปล่า หมายถึงให้ทำงานแค่ครั้งเดียวตอน component โหลด
 
    // --- useEffect Hooks ---
   // ดึงข้อมูล Persona Library เมื่อแอปโหลด
@@ -217,10 +200,8 @@ function App() {
   }
 };
 
-// 3. ฟังก์ชันจัดการเลือก prompt จาก select
-const handleSelectPrompt = (selectedPrompt: string) => {
-  setPrompt(selectedPrompt); // ตั้ง prompt ใน input
-};
+
+
 
 
   return (
