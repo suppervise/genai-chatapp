@@ -44,7 +44,7 @@ def read_root():
     return {"status": "GenAI Chat App Backend is running!"}
 
 
-@app.get("/get-prompts")
+@app.get("/api/get-prompts")
 async def get_prompts():
     """
     Endpoint สำหรับดึงข้อมูลคลังพร้อมท์จากไฟล์ prompts.json
@@ -115,7 +115,7 @@ async def stream_generator(history: List[Dict[str, str]], prompt: str, model_nam
         yield f"data: {error_message}\n\n"
 
 
-@app.post("/generate-stream")
+@app.post("/api/generate-stream")
 async def generate_stream(
     # รับข้อมูลจาก Form Data ที่ส่งมาจาก Frontend
     history: str = Form(...),
