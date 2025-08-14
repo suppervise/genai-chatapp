@@ -10,6 +10,8 @@ from fastapi.responses import StreamingResponse
 from typing import AsyncGenerator, List, Dict, Optional
 from PIL import Image
 
+from pathlib import Path # นำเข้า Path จาก pathlib
+
 # --- การติดตั้งที่จำเป็น ---
 # pip install python-multipart Pillow google-generativeai
 # หลังจากติดตั้งแล้ว, อย่าลืมอัปเดต requirements.txt:
@@ -44,13 +46,17 @@ def read_root():
     return {"status": "GenAI Chat App Backend is running!"}
 
 
-@app.get("/api/get-prompts")
+@app.get("/get-prompts")
 async def get_prompts():
     """
     Endpoint สำหรับดึงข้อมูลคลังพร้อมท์จากไฟล์ prompts.json
     """
     try:
-        with open("prompts.json", "r", encoding="utf-8") as f:
+
+         # --- การแก้ไขที่ 2: ใช้ Path ที่สมบูรณ์ในการหาไฟล์ ---
+        # สร้าง path ที่ถูกต้องเสมอ ไม่ว่าโค้ดจะถูกรันจากที่ไหน
+        PROMPTS_PATH = Path(__file__).parent / "prompts.json"
+        with open(PROMPTS_PATH, "r", encoding="utf-8") as f:
             prompts = json.load(f)
         return prompts
     except FileNotFoundError:
@@ -115,7 +121,7 @@ async def stream_generator(history: List[Dict[str, str]], prompt: str, model_nam
         yield f"data: {error_message}\n\n"
 
 
-@app.post("/api/generate-stream")
+@app.post("/generate-stream")
 async def generate_stream(
     # รับข้อมูลจาก Form Data ที่ส่งมาจาก Frontend
     history: str = Form(...),
