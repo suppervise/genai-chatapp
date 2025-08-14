@@ -26,12 +26,6 @@ interface PersonaTemplate {
   history: Message[];
 }
 
-// สร้าง Type สำหรับ Prompt Library
-interface PromptTemplate {
-  title: string;
-  prompt: string;
-}
-
 // รายการโมเดลที่มีให้เลือก
 const availableModels = [
   { id: 'gemini-1.5-flash-latest', name: 'Gemini 1.5 Flash (เร็ว)' },
