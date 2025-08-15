@@ -26,6 +26,12 @@ interface PersonaTemplate {
   history: Message[];
 }
 
+// สร้าง Type สำหรับ Prompt Library
+interface PromptTemplate {
+  title: string;
+  prompt: string;
+}
+
 // รายการโมเดลที่มีให้เลือก
 const availableModels = [
   { id: 'gemini-1.5-flash-latest', name: 'Gemini 1.5 Flash (เร็ว)' },
@@ -48,12 +54,13 @@ function App() {
 
 
 
+
    // --- useEffect Hooks ---
   // ดึงข้อมูล Persona Library เมื่อแอปโหลด
   useEffect(() => {
     const fetchPersonas = async () => {
       try {
-        const response = await axios.get<PersonaTemplate[]>('api/get-prompts');
+        const response = await axios.get<PersonaTemplate[]>('http://127.0.0.1:8000/get-prompts');
         setPersonaLibrary(response.data);
       } catch (error) {
         console.error("Could not fetch persona library:", error);
@@ -128,7 +135,7 @@ function App() {
 
 
   try {
-    const response = await fetch('api/generate-stream', {
+    const response = await fetch('http://127.0.0.1:8000/generate-stream', {
       method: 'POST',
       body: formData, // ส่ง FormData แทน JSON.stringify
       
@@ -193,8 +200,6 @@ function App() {
     setIsLoading(false);
   }
 };
-
-
 
 
 

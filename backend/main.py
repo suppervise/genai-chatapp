@@ -31,8 +31,7 @@ client = genai.Client(api_key=API_KEY)
 app = FastAPI(title="GenAI Chat App API", version="1.1.0")
 
 # ตั้งค่า CORS Middleware
-# origins = ["http://localhost:5173"]
-origins = ["http://localhost:5173", "https://chat-agent-inky.vercel.app", "https://chat-agent-7kcu2c9hq-boondees-projects.vercel.app"]
+origins = ["http://localhost:5173"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -53,11 +52,7 @@ async def get_prompts():
     Endpoint สำหรับดึงข้อมูลคลังพร้อมท์จากไฟล์ prompts.json
     """
     try:
-
-         # --- การแก้ไขที่ 2: ใช้ Path ที่สมบูรณ์ในการหาไฟล์ ---
-        # สร้าง path ที่ถูกต้องเสมอ ไม่ว่าโค้ดจะถูกรันจากที่ไหน
-        PROMPTS_PATH = Path(__file__).parent / "prompts.json"
-        with open(PROMPTS_PATH, "r", encoding="utf-8") as f:
+        with open("prompts.json", "r", encoding="utf-8") as f:
             prompts = json.load(f)
         return prompts
     except FileNotFoundError:
