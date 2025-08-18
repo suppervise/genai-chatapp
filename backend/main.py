@@ -10,7 +10,8 @@ from fastapi.responses import StreamingResponse
 from typing import AsyncGenerator, List, Dict, Optional
 from PIL import Image
 
-from pathlib import Path # นำเข้า Path จาก pathlib
+from tavily import TavilyClient
+from google.generativeai.types import Tool
 
 # --- การติดตั้งที่จำเป็น ---
 # pip install python-multipart Pillow google-generativeai
@@ -24,8 +25,11 @@ API_KEY = os.getenv("GEMINI_API_KEY")
 if not API_KEY:
     raise RuntimeError("GEMINI_API_KEY environment variable not set. Please create a .env file.")
 
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY") # <-- ดึง Tavily Key
+
 # สร้าง client สำหรับ Google GenAI SDK
 client = genai.Client(api_key=API_KEY)
+tavily_client = TavilyClient(api_key=TAVILY_API_KEY) # <-- สร้าง Tavily Client
 
 # สร้าง FastAPI app
 app = FastAPI(title="GenAI Chat App API", version="1.1.0")
@@ -39,6 +43,28 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# --- Pydantic Models ---
+class AgenticRequest(BaseModel):
+    history: List[Dict[str, str]]
+    prompt: str
+    model: str
+
+# --- นิยาม "เครื่องมือค้นหา" (เหมือนเดิม แต่สำคัญมาก) ---
+def tavily_search(query: str) -> str:
+    """
+    เครื่องมือสำหรับค้นหาข้อมูลล่าสุดจากอินเทอร์เน็ตเพื่อตอบคำถามเกี่ยวกับเหตุการณ์ปัจจุบัน
+    และข้อมูลที่ไม่แน่นอน ใช้อันนี้เมื่อต้องการข้อมูลที่ up-to-date.
+    """
+    print(f"--- Calling Tavily Search Tool with query: '{query}' ---")
+    try:
+        # ใช้ search แทน basic_search หรือ advanced_search เพื่อความยืดหยุ่น
+        response = tavily_client.search(query=query, search_depth="basic", max_results=5)
+        context = "\n\n".join([f"Source URL: {obj['url']}\nContent: {obj['content']}" for obj in response['results']])
+        return context
+    except Exception as e:
+        print(f"--- Tavily Search Error: {e} ---")
+        return f"Error occurred during search: {e}"
 
 
 @app.get("/")
@@ -144,6 +170,36 @@ async def generate_stream(
         raise HTTPException(status_code=400, detail="Invalid history format. Must be a valid JSON string.")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
+
+# --- Endpoint ใหม่สำหรับ RAG (ไม่ใช้ Streaming) ---
+@app.post("/generate-agentic-response")
+async def generate_agentic_response(request: AgenticRequest):
+    try:
+        # 1. สร้าง 'contents' จาก history และ prompt
+        contents = []
+        for message in request.history:
+            role = "user" if message["sender"] == "user" else "model"
+            contents.append({'role': role, 'parts': [{'text': message["text"]}]})
+        contents.append({'role': 'user', 'parts': [{'text': request.prompt}]})
+
+        # --- การเปลี่ยนแปลงที่สำคัญตามที่คุณค้นพบ ---
+        # 2. สร้าง model instance และส่ง tools เข้าไปโดยตรง
+        #    นี่คือวิธีที่ทำให้เกิด "Agentic Loop"
+        model = genai.GenerativeModel(
+            model_name=request.model,
+            tools=[tavily_search],# <-- ส่งฟังก์ชันเข้าไปในลิสต์ tools โดยตรง
+              system_instruction="You are a helpful and powerful research assistant named Alex-Agent. Your goal is to provide the most accurate and up-to-date information. For any questions regarding recent events, current affairs, statistics, or any topic where information could have changed, you MUST use the `tavily_search` tool. Do not rely on your internal knowledge for these types of questions. Before providing the answer, briefly mention that you are searching for the latest information."
+        )
+
+        # 3. เรียก generate_content จาก model instance
+        #    SDK จะจัดการเรื่องการเรียกใช้ tool และส่งผลลัพธ์กลับมาให้ AI โดยอัตโนมัติ
+        response = model.generate_content(contents)
+        # --------------------------------------------
+
+        return {"response": response.text}
+    except Exception as e:
+        print(f"An error occurred in agentic response: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

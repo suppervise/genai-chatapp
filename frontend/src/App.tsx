@@ -26,17 +26,14 @@ interface PersonaTemplate {
   history: Message[];
 }
 
-// สร้าง Type สำหรับ Prompt Library
-interface PromptTemplate {
-  title: string;
-  prompt: string;
-}
 
 // รายการโมเดลที่มีให้เลือก
 const availableModels = [
   { id: 'gemini-1.5-flash-latest', name: 'Gemini 1.5 Flash (เร็ว)' },
-  { id: 'gemini-1.5-pro-latest', name: 'Gemini 1.5 Pro (ฉลาด)' },
-   { id: 'gemini-2.0-flash', name: 'Gemini 2.0 flash (ฉลาด)' },
+  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 flash (เฉียบ)' },
+   { id: 'gemini-2.0-flash', name: 'Gemini 2.0 flash (ฉลาดเร็ว)' },
+  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 pro (ฉลาดสุขุม)' },
+
 ];
 
 
@@ -95,7 +92,7 @@ function App() {
     if (selectedPersona) {
       setChatHistory(selectedPersona.history); // ตั้งค่า History ใหม่ทั้งหมด
       setPrompt(''); // เคลียร์ช่อง input
-      removeImage(); // เคลียร์รูปภาพ
+     // removeImage(); // เคลียร์รูปภาพ
     }
   };
 
@@ -131,7 +128,7 @@ function App() {
     
     // เคลียร์ input และรูปภาพ
     setPrompt('');
-    removeImage();
+    //removeImage();
 
 
   try {
@@ -210,6 +207,7 @@ function App() {
         <button onClick={handleNewChat} className="new-chat-btn">
           <NewChatIcon /> New Chat
         </button>
+        
            {/* --- Dropdown สำหรับ Persona --- */}
         <div className="persona-selector">
           <label htmlFor="persona-select">Persona:</label>
