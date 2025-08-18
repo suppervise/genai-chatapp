@@ -71,8 +71,11 @@ def tavily_search(query: str) -> str:
 def read_root():
     return {"status": "GenAI Chat App Backend is running!"}
 
+@app.get("/api/health")
+def health_check():
+    return {"status": "ok", "message": "Backend is running correctly!"}
 
-@app.get("/get-prompts")
+@app.get("/api/get-prompts")
 async def get_prompts():
     """
     Endpoint สำหรับดึงข้อมูลคลังพร้อมท์จากไฟล์ prompts.json
@@ -143,7 +146,7 @@ async def stream_generator(history: List[Dict[str, str]], prompt: str, model_nam
         yield f"data: {error_message}\n\n"
 
 
-@app.post("/generate-stream")
+@app.post("/api/generate-stream")
 async def generate_stream(
     # รับข้อมูลจาก Form Data ที่ส่งมาจาก Frontend
     history: str = Form(...),
@@ -188,7 +191,7 @@ async def generate_agentic_response(request: AgenticRequest):
         model = genai.GenerativeModel(
             model_name=request.model,
             tools=[tavily_search],# <-- ส่งฟังก์ชันเข้าไปในลิสต์ tools โดยตรง
-              system_instruction="You are a helpful and powerful research assistant named Alex-Agent. Your goal is to provide the most accurate and up-to-date information. For any questions regarding recent events, current affairs, statistics, or any topic where information could have changed, you MUST use the `tavily_search` tool. Do not rely on your internal knowledge for these types of questions. Before providing the answer, briefly mention that you are searching for the latest information."
+            system_instruction="You are a helpful and powerful research assistant named Alex-Agent. Your goal is to provide the most accurate and up-to-date information. For any questions regarding recent events, current affairs, statistics, or any topic where information could have changed, you MUST use the `tavily_search` tool. Do not rely on your internal knowledge for these types of questions. Before providing the answer, briefly mention that you are searching for the latest information."
         )
 
         # 3. เรียก generate_content จาก model instance
