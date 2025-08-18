@@ -57,7 +57,7 @@ function App() {
   useEffect(() => {
     const fetchPersonas = async () => {
       try {
-        const response = await axios.get<PersonaTemplate[]>('http://127.0.0.1:8000/get-prompts');
+        const response = await axios.get<PersonaTemplate[]>('/api/get-prompts');
         setPersonaLibrary(response.data);
       } catch (error) {
         console.error("Could not fetch persona library:", error);
@@ -128,11 +128,11 @@ function App() {
     
     // เคลียร์ input และรูปภาพ
     setPrompt('');
-    //removeImage();
+    removeImage();
 
 
   try {
-    const response = await fetch('http://127.0.0.1:8000/generate-stream', {
+    const response = await fetch('/api/generate-stream', {
       method: 'POST',
       body: formData, // ส่ง FormData แทน JSON.stringify
       
