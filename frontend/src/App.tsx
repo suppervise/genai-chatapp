@@ -5,6 +5,9 @@ import axios from 'axios'; // เราจะใช้ axios สำหรับ 
 
 
 
+
+const BACKEND_URL = 'https://genai-chatapp-backend.onrender.com'
+
 // ไอคอนสำหรับปุ่ม New Chat (สามารถใช้รูปภาพหรือ SVG อื่นๆ ได้)
 const NewChatIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -57,7 +60,7 @@ function App() {
   useEffect(() => {
     const fetchPersonas = async () => {
       try {
-        const response = await axios.get<PersonaTemplate[]>('/api/get-prompts');
+        const response = await axios.get<PersonaTemplate[]>(`${BACKEND_URL}/api/get-prompts`);
         setPersonaLibrary(response.data);
       } catch (error) {
         console.error("Could not fetch persona library:", error);
@@ -132,7 +135,7 @@ function App() {
 
 
   try {
-    const response = await fetch('/api/generate-stream', {
+    const response = await fetch(`${BACKEND_URL}/api/generate-stream`, {
       method: 'POST',
       body: formData, // ส่ง FormData แทน JSON.stringify
       
