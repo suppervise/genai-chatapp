@@ -50,16 +50,19 @@ app = FastAPI(title="GenAI Chat App API", version="1.1.0")
 
 
 # ตั้งค่า CORS Middleware
-origins = ["http://localhost:5173",
-         "https://genai-chatapp.vercel.app"]
+
+
+
+allowed_origins_regex = r"https?:\/\/localhost:5173|https?:\/\/genai-chatapp(-[a-zA-Z0-9]+)?-boondees-projects\.vercel\.app"
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origin_regex=allowed_origins_regex, # <--- ใช้ Regex แทน list
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 # --- Pydantic Models ---
 class AgenticRequest(BaseModel):
     history: List[Dict[str, str]]
