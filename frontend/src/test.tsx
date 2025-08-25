@@ -1,4 +1,4 @@
-import { useState, type FormEvent, useEffect, useRef,type ChangeEvent } from 'react';
+import { useState, type FormEvent, useEffect, useRef, type ChangeEvent } from 'react';
 import ReactMarkdown from 'react-markdown';
 import './App.css';
 import axios from 'axios';
@@ -17,22 +17,16 @@ interface PersonaTemplate {
 
 // --- Constants ---
 const availableModels = [
-  { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
-  { id: 'gemini-2.0-pro', name: 'Gemini 2.0 Pro' },
-  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 flash' },
-  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+  { id: 'gemini-1.5-flash-latest', name: 'Gemini 1.5 Flash (เร็ว)' },
+  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 flash (เฉียบ)' },
+  { id: 'gemini-2.0-flash', name: 'Gemini 2.0 flash (ฉลาดเร็ว)' },
+  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 pro (ฉลาดสุขุม)' },
 ];
 
 // !!! =============================================================== !!!
 // !!! ==> โปรดแก้ไข URL นี้ให้เป็น URL ของ Backend บน Render.com <== !!!
 // !!! =============================================================== !!!
-
-
-const isProduction = process.env.NODE_ENV === 'production';
-const BACKEND_URL = isProduction 
-  ? 'https://genai-chatapp-backend.onrender.com' // <-- URL สำหรับ Production
-  : 'http://127.0.0.1:8000';                   // <-- URL สำหรับ Localhost
-
+const BACKEND_URL = 'https://genai-chatapp-backend.onrender.com';
 
 
 // --- Main App Component ---
@@ -186,18 +180,21 @@ function App() {
                     const dataStr = line.substring(6);
                     if (dataStr.trim()) {
                         const data = JSON.parse(dataStr);
+                        
                         if (data.text) {
                             setGeneralChatHistory(prev => {
-                                const newHistory = [...prev];
-                                const lastMessage = newHistory[newHistory.length - 1];
-                                if (lastMessage?.sender === 'ai')
-                                   if (!lastMessage.text.endsWith(data.text)) 
-                                      {
-                                       lastMessage.text += data.text;
-                                     }
-                                return newHistory;
+                              const newHistory = [...prev];
+                              const lastMessage = newHistory[newHistory.length - 1];
+                              if (lastMessage?.sender === 'ai') {
+                                  lastMessage.text = (lastMessage.text || '') + data.text;
+                              } else {
+                                  newHistory.push({ sender: 'ai', text: data.text });
+                              }
+                              return newHistory;
                             });
-                        } else if (data.error) {
+                            }
+
+                        else if (data.error) {
                             // Handle error from stream
                              setGeneralChatHistory(prev => {
                                 const newHistory = [...prev];
@@ -228,103 +225,80 @@ function App() {
   };
 
   // Handles form submission for the RAG Chat mode
-
-const handleRagSubmit = async () => {
-  if (!ragPrompt.trim() || !ragFile) {
-    alert("Please upload a PDF file and ask a question.");
-    return;
-  }
-  setIsLoading(true);
-
-  const formData = new FormData();
-  formData.append('question', ragPrompt);
-  formData.append('model', selectedModel);
-  formData.append('file', ragFile);
-
-  // เพิ่มข้อความผู้ใช้และเตรียมข้อความว่างสำหรับ AI
-  setRagChatHistory(prev => [...prev, { sender: 'user', text: ragPrompt }, { sender: 'ai', text: '' }]);
-  setRagPrompt('');
-
-  try {
-    const response = await fetch(`${BACKEND_URL}/api/ask-document-stream`, {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (!response.body) {
-      throw new Error("ReadableStream not supported in this browser.");
+  const handleRagSubmit = async () => {
+    if (!ragPrompt.trim() || !ragFile) {
+      alert("Please upload a PDF file and ask a question.");
+      return;
     }
+    setIsLoading(true);
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let done = false;
-    let buffer = '';
+    const formData = new FormData();
+    formData.append('question', ragPrompt);
+    formData.append('model', selectedModel);
+    formData.append('file', ragFile);
 
-    while (!done) {
-      const { value, done: readerDone } = await reader.read();
-      done = readerDone;
-      buffer += decoder.decode(value || new Uint8Array(), { stream: true });
+    setRagChatHistory(prev => [...prev, { sender: 'user', text: ragPrompt }, { sender: 'ai', text: '' }]);
+    setRagPrompt('');
 
-      // แบ่ง buffer ตามตัวแบ่งของ SSE (\n\n)
-      const parts = buffer.split('\n\n');
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/ask-document-stream`, {
+        method: 'POST',
+        body: formData,
+      });
 
-      // ประมวลผลทุกส่วนที่สมบูรณ์ (ยกเว้นส่วนสุดท้าย)
-      for (let i = 0; i < parts.length - 1; i++) {
-        const line = parts[i];
-
-        if (line.startsWith('data: ')) {
-          const dataStr = line.substring(6).trim();
-
-          if (dataStr) {
-            try {
+      if (!response.body) return;
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      
+      let done = false;
+      while (!done) {
+        const { value, done: readerDone } = await reader.read();
+        done = readerDone;
+        const chunk = decoder.decode(value, { stream: true });
+        
+        const lines = chunk.split('\n\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const dataStr = line.substring(6);
+            if (dataStr.trim()) {
               const data = JSON.parse(dataStr);
-
               if (data.text) {
                 setRagChatHistory(prev => {
                   const newHistory = [...prev];
                   const lastMessage = newHistory[newHistory.length - 1];
                   if (lastMessage?.sender === 'ai') {
-                    // ป้องกันข้อความซ้ำ
-                    if (!lastMessage.text.endsWith(data.text)) {
-                      lastMessage.text += data.text;
-                    }
+                    lastMessage.text += data.text;
                   }
                   return newHistory;
                 });
               } else if (data.error) {
-                setRagChatHistory(prev => {
-                  const newHistory = [...prev];
-                  const lastMessage = newHistory[newHistory.length - 1];
-                  if (lastMessage?.sender === 'ai') {
-                    lastMessage.text = `Error: ${data.error}`;
-                  }
-                  return newHistory;
+                 setRagChatHistory(prev => {
+                    const newHistory = [...prev];
+                    const lastMessage = newHistory[newHistory.length - 1];
+                    if (lastMessage?.sender === 'ai') {
+                      lastMessage.text = `Error: ${data.error}`;
+                    }
+                    return newHistory;
                 });
               }
-            } catch (error) {
-              console.error("Error parsing JSON stream chunk:", error, dataStr);
             }
           }
         }
       }
-
-      // เก็บข้อความที่ยังไม่สมบูรณ์ไว้เพื่อประมวลผลในรอบถัดไป
-      buffer = parts[parts.length - 1];
+    } catch (error) {
+      console.error("Error fetching RAG response:", error);
+      setRagChatHistory(prev => {
+        const newHistory = [...prev];
+        const lastMessage = newHistory[newHistory.length - 1];
+        if (lastMessage?.sender === 'ai') {
+          lastMessage.text = "Sorry, a connection error occurred.";
+        }
+        return newHistory;
+      });
+    } finally {
+      setIsLoading(false);
     }
-  } catch (error) {
-    console.error("Error fetching RAG response:", error);
-    setRagChatHistory(prev => {
-      const newHistory = [...prev];
-      const lastMessage = newHistory[newHistory.length - 1];
-      if (lastMessage?.sender === 'ai') {
-        lastMessage.text = "Sorry, a connection error occurred.";
-      }
-      return newHistory;
-    });
-  } finally {
-    setIsLoading(false);
-  }
-};
+  };
 
   // --- Render Logic ---
 
@@ -333,37 +307,21 @@ const handleRagSubmit = async () => {
   const currentPrompt = chatMode === 'general' ? generalPrompt : ragPrompt;
   const setCurrentPrompt = chatMode === 'general' ? setGeneralPrompt : setRagPrompt;
 
-    return (
+  return (
     <div className="app-container">
-      {/* --- Header Area (แก้ไขให้ถูกต้อง) --- */}
+      {/* --- Header Area --- */}
       <div className="app-header">
         <div className="mode-toggle">
           <button onClick={() => handleModeChange('general')} className={chatMode === 'general' ? 'active' : ''}>General Chat</button>
           <button onClick={() => handleModeChange('rag')} className={chatMode === 'rag' ? 'active' : ''}>Ask Document</button>
         </div>
-        
-        {/* --- ส่วนควบคุมทั้งหมดจะอยู่ในนี้ที่เดียว --- */}
         <div className="header-controls">
-          <select 
-            onChange={e => handleSelectPersona(e.target.value)} 
-            value="" // ตั้งเป็นค่าว่างเสมอเพื่อให้เลือกซ้ำได้
-            className="persona-selector"
-          >
+          <select onChange={e => handleSelectPersona(e.target.value)} value="">
             <option value="" disabled>-- Change Persona --</option>
-            {personaLibrary.map((p) => (
-              <option key={p.id} value={p.id}>{p.title}</option>
-            ))}
+            {personaLibrary.map((p) => (<option key={p.id} value={p.id}>{p.title}</option>))}
           </select>
-          
-          <select 
-            value={selectedModel} 
-            onChange={e => setSelectedModel(e.target.value)} 
-            disabled={isLoading}
-            className="model-selector"
-          >
-            {availableModels.map(model => (
-              <option key={model.id} value={model.id}>{model.name}</option>
-            ))}
+          <select value={selectedModel} onChange={e => setSelectedModel(e.target.value)} disabled={isLoading}>
+            {availableModels.map(model => (<option key={model.id} value={model.id}>{model.name}</option>))}
           </select>
         </div>
       </div>
@@ -378,7 +336,7 @@ const handleRagSubmit = async () => {
         {isLoading && <div className="message ai"><div className="typing-indicator"><span></span><span></span><span></span></div></div>}
       </div>
 
-      {/* --- Input Area --- */}
+      {/* --- Input Area (Dynamically changes based on mode) --- */}
       <div className="input-area">
         {chatMode === 'rag' && (
           <div className="rag-controls">
@@ -398,11 +356,9 @@ const handleRagSubmit = async () => {
 
         <form className="chat-input-form" onSubmit={handleSubmit}>
           {chatMode === 'general' && (
-            <>
-              <button type="button" onClick={() => generalFileInputRef.current?.click()} className="attach-btn" title="Attach Image">📎</button>
-              <input type="file" ref={generalFileInputRef} onChange={handleGeneralImageChange} accept="image/*" style={{ display: 'none' }} />
-            </>
+            <button type="button" onClick={() => generalFileInputRef.current?.click()} className="attach-btn" title="Attach Image">📎</button>
           )}
+           <input type="file" ref={generalFileInputRef} onChange={handleGeneralImageChange} accept="image/*" style={{ display: 'none' }} />
 
           <input
             type="text"
@@ -423,8 +379,6 @@ const handleRagSubmit = async () => {
       </div>
     </div>
   );
-
-
 }
 
 export default App;

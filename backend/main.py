@@ -13,6 +13,19 @@ from PIL import Image
 from tavily import TavilyClient
 from google.generativeai.types import Tool
 
+from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+from langchain.prompts import PromptTemplate
+from langchain.schema.runnable import RunnablePassthrough
+from langchain.schema.output_parser import StrOutputParser
+import tempfile
+
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.vectorstores import Chroma
+
+
 # --- การติดตั้งที่จำเป็น ---
 # pip install python-multipart Pillow google-generativeai
 # หลังจากติดตั้งแล้ว, อย่าลืมอัปเดต requirements.txt:
@@ -206,6 +219,87 @@ async def generate_agentic_response(request: AgenticRequest):
     except Exception as e:
         print(f"An error occurred in agentic response: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    
+@app.post("/api/ask-document-stream")
+async def ask_document_stream(
+    question: str = Form(...),
+    model: str = Form(...),
+    file: UploadFile = File(...)
+):
+      # --- เพิ่มส่วนการดีบักตรงนี้ ---
+    print("--- RAG Endpoint Called ---")
+    print(f"Received Question: {question}")
+    print(f"Selected Model: {model}")
+    if file:
+        print(f"File Received: {file.filename}")
+        print(f"File Content-Type: {file.content_type}")
+    else:
+        print("File was NOT received.")
+    print("--------------------------")
+    try:
+        # 1. โหลดและประมวลผลไฟล์ PDF ที่อัปโหลดมา
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+            content = await file.read()
+            tmp_file.write(content)
+            tmp_file_path = tmp_file.name
+        
+
+        loader = PyPDFLoader(file_path=tmp_file_path)
+        documents = loader.load()  # load() จะโหลดเอกสารทั้งหมดในไฟล์ PDF
+
+        # 2. ตัดแบ่งเอกสารเป็นชิ้นเล็กๆ (Chunking)
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+        docs = text_splitter.split_documents(documents)
+
+        
+
+        # 3. สร้าง Embeddings และจัดเก็บลงใน ChromaDB (ในหน่วยความจำ)
+        embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=API_KEY)
+        vectorstore = Chroma.from_documents(documents=docs, embedding=embeddings)
+        retriever = vectorstore.as_retriever(search_kwargs={"k": 3}) # ตั้งค่าให้ดึงข้อมูลที่เกี่ยวข้องที่สุด 3 ชิ้น
+
+        # 4. สร้าง Prompt Template
+        template = """
+        First, review the following context carefully.
+        {context}
+        
+        Based on the context provided, answer the following question: {question}
+
+        To answer, you must follow these steps:
+        1.  **Analyze the Question:** Clearly state what the user is asking for.
+        2.  **Extract Relevant Information:** Identify and list the specific pieces of information from the context that are relevant to the question.
+        3.  **Synthesize the Answer:** Combine the extracted information to construct a comprehensive answer.
+
+        Provide your final answer based on this step-by-step process.
+        """
+        prompt = PromptTemplate.from_template(template)
+
+        # 5. สร้าง Chain ที่เชื่อมทุกอย่างเข้าด้วยกัน
+        llm = ChatGoogleGenerativeAI(model=model, google_api_key=API_KEY, temperature=0.5, convert_system_message_to_human=True)
+        
+        chain = (
+            {"context": retriever, "question": RunnablePassthrough()}
+            | prompt
+            | llm
+            | StrOutputParser()
+        )
+
+        # 6. สร้าง Generator เพื่อ Stream ผลลัพธ์กลับไป
+        async def event_stream():
+            # ใช้ astream เพื่อให้ได้ผลลัพธ์แบบ streaming
+            async for chunk in chain.astream(question):
+                data = json.dumps({"text": chunk})
+                yield f"data: {data}\n\n"
+        
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+    except Exception as e:
+        print(f"Error in RAG pipeline: {e}")
+        # ในกรณีเกิด error เราจะส่ง error message กลับไปใน stream เช่นกัน
+        async def error_stream():
+            error_message = json.dumps({"error": f"An error occurred: {str(e)}"})
+            yield f"data: {error_message}\n\n"
+        return StreamingResponse(error_stream(), media_type="text/event-stream") 
 
 
 if __name__ == "__main__":
