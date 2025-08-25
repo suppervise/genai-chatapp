@@ -5,7 +5,7 @@ python-dotenv
 python-multipart
 # Google AI
 google-generativeai # ไลบรารีหลัก
-googel-genai
+google-genai==1.28.0
 # LangChain and Agents
 langchain
 langchain_google_genai
