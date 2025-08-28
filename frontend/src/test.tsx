@@ -19,10 +19,8 @@ interface PersonaTemplate {
 
 // --- Constants (อัปเดต Models list ของคุณ) ---
 const availableModels = [
-  { id: 'gemini-2.0-flash', name: 'Gemini 2.o Flash' },
-  { id: 'gemini-2.0-pro', name: 'Gemini 2.0 Pro' },
-  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 flash' },
-  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+  { id: 'gemini-1.5-flash-latest', name: 'Gemini 1.5 Flash' },
+  { id: 'gemini-1.5-pro-latest', name: 'Gemini 1.5 Pro' },
 ];
 
 const isProduction = process.env.NODE_ENV === 'production';
@@ -125,6 +123,70 @@ const handleGeneralImageChange = (e: ChangeEvent<HTMLInputElement>) => {
 };
 
   // *** Handler ใหม่สำหรับ Agent Submit ***
+  const handleAgentSubmit = async () => {
+    if (!agentPrompt.trim()) return;
+    setIsLoading(true);
+
+    const formData = new FormData();
+    formData.append('question', agentPrompt);
+    formData.append('model', selectedModel);
+
+    // เพิ่ม prompt ของผู้ใช้เข้าไปใน history
+    setAgentChatHistory(prev => [...prev, { sender: 'user', text: agentPrompt, type: 'user_input' }]);
+    // เพิ่ม placeholder ว่างๆ สำหรับรับข้อมูลจาก AI
+    setAgentChatHistory(prev => [...prev, { sender: 'ai', text: '', type: 'thought' }]);
+    setAgentPrompt('');
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/run-agent-stream`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.body) return;
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let done = false;
+
+      while (!done) {
+        const { value, done: readerDone } = await reader.read();
+        done = readerDone;
+        const chunk = decoder.decode(value, { stream: true });
+        
+        const lines = chunk.split('\n\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const dataStr = line.substring(6);
+            if (dataStr.trim()) {
+              const data = JSON.parse(dataStr);
+              if (data.text) {
+                setAgentChatHistory(prev => {
+                  const newHistory = [...prev];
+                  const lastMessage = newHistory[newHistory.length - 1];
+                  
+                  // ถ้า AI ส่ง `thought` มา ให้ต่อท้าย `thought` เดิม
+                  if (data.type === 'thought' && lastMessage?.type === 'thought') {
+                    lastMessage.text += data.text;
+                  } 
+                  // ถ้า AI ส่ง `final_answer` มา ให้แทนที่ `thought` สุดท้ายด้วยคำตอบ
+                  else if (data.type === 'final_answer' && lastMessage?.type === 'thought') {
+                    lastMessage.text = data.text;
+                    lastMessage.type = 'final_answer';
+                  }
+                  return newHistory;
+                });
+              } // ... (handle error)
+            }
+          }
+        }
+      }
+    } catch (error) {
+      // ... (handle error)
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // ... (handleGeneralSubmit และ handleRagSubmit เหมือนเดิม) ...
 
   // Handles form submission for the General Chat mode
@@ -304,100 +366,6 @@ const handleRagSubmit = async () => {
     setIsLoading(false);
   }
 };
-
-// ใน App() componen
-
-// ใน App() component
-
-  // *** Handler ใหม่สำหรับ Agent Submit (เวอร์ชันสมบูรณ์แบบ) ***
-  const handleAgentSubmit = async () => {
-    if (!agentPrompt.trim()) return;
-    setIsLoading(true);
-
-    const formData = new FormData();
-    formData.append('question', agentPrompt);
-    formData.append('model', selectedModel);
-
-    // 1. เพิ่ม Prompt ของผู้ใช้
-    setAgentChatHistory(prev => [...prev, { sender: 'user', text: agentPrompt }]);
-    // 2. เพิ่ม Placeholder สำหรับ "ความคิด" (Thinking Log)
-    // เราจะใช้กล่องนี้กล่องเดียวสำหรับเก็บ 'thought' ทั้งหมด
-    setAgentChatHistory(prev => [...prev, { sender: 'ai', text: '', type: 'thought' }]);
-    
-    setAgentPrompt('');
-
-    try {
-      const response = await fetch(`${BACKEND_URL}/api/run-agent-stream`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.body) return;
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let done = false;
-      let buffer = '';
-
-      while (!done) {
-        const { value, done: readerDone } = await reader.read();
-        done = readerDone;
-        buffer += decoder.decode(value, { stream: true });
-        
-        const lines = buffer.split('\n\n');
-        // ประมวลผลทุกบรรทัดที่สมบูรณ์ ยกเว้นบรรทัดสุดท้ายที่อาจจะยังมาไม่ครบ
-        const fullLines = lines.slice(0, -1);
-        buffer = lines[lines.length - 1]; // เก็บส่วนที่ยังไม่ครบไว้
-
-        for (const line of fullLines) {
-          if (line.startsWith('data: ')) {
-            const dataStr = line.substring(6);
-            if (dataStr.trim()) {
-              const data = JSON.parse(dataStr);
-
-              if (data.text) {
-                setAgentChatHistory(prev => {
-                  const newHistory = [...prev];
-                  const lastMessage = newHistory[newHistory.length - 1];
-
-                  if (lastMessage?.sender !== 'ai') return newHistory;
-                      // ตรวจสอบว่าข้อความใหม่ไม่ได้ถูกเพิ่มเข้าไปแล้ว
-                  if (lastMessage.text.endsWith(data.text)) {
-                      return newHistory; // ถ้าซ้ำ ให้ข้ามไปเลย
-                  }
-
-                  // กรณีที่ 1: ได้รับ "ความคิด"
-                  if (data.type === 'thought' && lastMessage.type === 'thought') {
-                    
-                    // ต่อท้ายข้อความลงในกล่อง "Thinking..." เดิม
-                    lastMessage.text += data.text + '\n'; // เพิ่ม \n เพื่อขึ้นบรรทัดใหม่
-                  } 
-                  // กรณีที่ 2: ได้รับ "คำตอบสุดท้ายชิ้นแรก"
-                  else if (data.type === 'final_answer_chunk' && lastMessage.type === 'thought') {
-                    // สร้างกล่องข้อความใหม่สำหรับคำตอบสุดท้ายโดยเฉพาะ
-                    return [...newHistory, { sender: 'ai', text: data.text, type: 'final_answer' }];
-                  }
-                  // กรณีที่ 3: ได้รับ "คำตอบสุดท้ายชิ้นต่อๆมา"
-                  else if (data.type === 'final_answer_chunk' && lastMessage.type === 'final_answer') {
-                    // ต่อท้ายข้อความลงในกล่อง "คำตอบสุดท้าย"
-                    lastMessage.text += data.text;
-                  }
-                  
-                  return newHistory;
-                });
-              } else if (data.error) {
-                // ... จัดการ error ...
-              }
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching agent response:", error);
-      // ... จัดการ error ...
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   // --- Render Logic (อัปเดตให้รองรับ 3 โหมด) ---
   const currentChatHistory = 

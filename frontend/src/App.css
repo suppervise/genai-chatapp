@@ -269,3 +269,68 @@ body {
   cursor: pointer;
   padding: 0 10px;
 }
+
+/* ... CSS เดิมทั้งหมด ... */
+
+/* --- CSS for Mode Toggle --- */
+.mode-toggle {
+  display: flex;
+  background-color: #333;
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.mode-toggle button {
+  background-color: transparent;
+  border: none;
+  color: #a0a0a0;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease-in-out;
+}
+
+.mode-toggle button.active {
+  background-color: #555;
+  color: #fff;
+  font-weight: 600;
+}
+
+/* --- CSS for RAG Controls --- */
+.rag-controls {
+  padding: 0 15px 10px;
+}
+
+.upload-btn {
+  background-color: #377dff;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 15px;
+  width: 100%;
+  cursor: pointer;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.message.thought-message {
+  background-color: #282c34; /* สีพื้นหลังเหมือนโค้ดบล็อก */
+  border-left: 4px solid #5c6bc0; /* เส้นขอบสีม่วงอมน้ำเงิน */
+  color: #abb2bf; /* สีตัวหนังสือสีเทาอ่อน */
+  font-style: italic;
+  font-size: 0.95em; /* ทำให้ตัวหนังสือเล็กลงเล็กน้อย */
+  white-space: pre-wrap; /* รักษาระยะเว้นวรรคและขึ้นบรรทัดใหม่ */
+}
+
+.thought-label {
+  display: block;
+  font-weight: bold;
+  font-style: normal;
+  color: #98c379; /* สีเขียวมิ้นท์ */
+  margin-bottom: 8px;
+  font-size: 0.9em;
+  text-transform: uppercase; /* ทำให้เป็นตัวพิมพ์ใหญ่ */
+  letter-spacing: 1px;
+}

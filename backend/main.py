@@ -1,6 +1,8 @@
 import os
 import json
 import io
+
+from langchain_google_genai import ChatGoogleGenerativeAI
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -24,6 +26,12 @@ import tempfile
 
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import Chroma
+
+# --- เพิ่ม import ที่จำเป็นสำหรับ Agent ---
+from langchain.agents import AgentExecutor, create_react_agent
+from langchain_community.tools import DuckDuckGoSearchRun, TavilySearchResults
+from langchain import hub # สำหรับดึง Prompt สำเร็จรูปของ Agent
+
 
 
 # --- การติดตั้งที่จำเป็น ---
@@ -304,6 +312,71 @@ async def ask_document_stream(
             yield f"data: {error_message}\n\n"
         return StreamingResponse(error_stream(), media_type="text/event-stream") 
 
+# --- Endpoint ใหม่สำหรับ Agent ---
+@app.post("/api/run-agent-stream")
+async def run_agent_stream(
+    question: str = Form(...),
+    model: str = Form(...)
+):
+    try:
+        # 1. เลือกรุ่นโมเดลสำหรับ Agent
+        llm = ChatGoogleGenerativeAI(model=model, google_api_key=API_KEY, temperature=0)
+
+        # 2. สร้าง "กล่องเครื่องมือ"
+        tools = [DuckDuckGoSearchRun(), TavilySearchResults(max_results=3)]
+
+        # 3. ดึง "สมอง" หรือ Prompt Template สำเร็จรูปสำหรับ Agent จาก LangChain Hub
+        #    Prompt นี้ถูกออกแบบมาเป็นพิเศษเพื่อสอนให้ AI รู้จักคิดและเลือกใช้เครื่องมือ
+        prompt = hub.pull("hwchase17/react")
+
+        # 4. สร้าง Agent ขึ้นมา
+        agent = create_react_agent(llm, tools, prompt)
+
+        # 5. สร้าง "ผู้ควบคุม" Agent (Agent Executor)
+        agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True) # verbose=True เพื่อให้ print ขั้นตอนการคิดออกมาใน lo      
+          # 6. สร้าง Generator (The Final Fix Version)
+        async def event_stream():
+            try:
+                # เราจะใช้ astream_events เหมือนเดิม แต่ดักจับ Event ที่ถูกต้อง
+                async for event in agent_executor.astream_events(
+                    {"input": question},
+                    version="v1",
+                    # เราสนใจ event จาก 3 ส่วนนี้เท่านั้น
+                    include_names=["ChatGoogleGenerativeAI", "DuckDuckGoSearchRun", "TavilySearchResults"],
+                ):
+                    kind = event["event"]
+                    
+                    # --- ดักจับ "ความคิด" และ "การเลือกเครื่องมือ" ---
+                    if kind == "on_chain_start":
+                        # ตรวจสอบว่าเป็นขั้นตอนการคิดของ Agent หรือไม่
+                        if event["name"] == "Agent" and event["data"].get("input"):
+                            thought_process = f"Starting Agent with input: {event['data']['input']}\n"
+                            data = json.dumps({"text": thought_process, "type": "thought"})
+                            yield f"data: {data}\n\n"
+
+                    # --- ดักจับ "ผลลัพธ์จากเครื่องมือ" ---
+                    elif kind == "on_tool_end":
+                        tool_output = f"Tool `{event['name']}` finished with output:\n```\n{event['data']['output']}\n```\n"
+                        data = json.dumps({"text": tool_output, "type": "thought"})
+                        yield f"data: {data}\n\n"
+                        
+                    # --- ดักจับ "คำตอบสุดท้าย" ที่ LLM พิมพ์ออกมา ---
+                    elif kind == "on_chat_model_stream":
+                        content_chunk = event["data"]["chunk"].content
+                        if content_chunk:
+                            data = json.dumps({"text": content_chunk, "type": "final_answer_chunk"})
+                            yield f"data: {data}\n\n"
+                            
+            except Exception as e:
+                print(f"Error during agent stream: {e}")
+                error_data = json.dumps({"error": str(e)})
+                yield f"data: {error_data}\n\n"
+
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+    except Exception as e:
+        print(f"Error in Agent pipeline: {e}")
+        # ... (จัดการ error เหมือนเดิม) ...
 
 if __name__ == "__main__":
     import uvicorn
