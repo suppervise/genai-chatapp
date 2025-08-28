@@ -10,5 +10,6 @@ pypdf
 python-multipart
 Pillow
 langchain-community
-duckduckgo-search
+#duckduckgo-search
 tavily-python
+ddgs
