@@ -15,7 +15,7 @@ chromadb
 # Document Loaders
 pypdf
 # Agent Tools
-duckduckgo-search
+duckduckgo_search==8.1.1
 tavily-python
 # Image Processing
 Pillow
