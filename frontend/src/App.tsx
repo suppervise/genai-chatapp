@@ -1,14 +1,18 @@
-import { useState, type FormEvent, useEffect, useRef, type ChangeEvent } from 'react';
+// App.tsx (Refactored)
+import { useState,type  FormEvent, useEffect, useRef,type ChangeEvent, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
-import './App.css';
 import axios from 'axios';
+import './App.css';
 
+// ==============================================================================
+// 1. TYPE DEFINITIONS & CONSTANTS (ส่วนนี้ควรแยกไปไฟล์ types.ts, constants.ts)
+// ==============================================================================
+type ChatMode = 'general' | 'rag' | 'agent';
 
-// --- Interfaces (อัปเดต Message interface) ---
 interface Message {
   sender: 'user' | 'ai';
   text: string;
-  type?: 'thought' | 'final_answer' | 'user_input'; // เพิ่ม type สำหรับ Agent
+  type?: 'thought' | 'final_answer'; // Simplified type for Agent
 }
 
 interface PersonaTemplate {
@@ -17,506 +21,305 @@ interface PersonaTemplate {
   history: Message[];
 }
 
-// --- Constants (อัปเดต Models list ของคุณ) ---
-const availableModels = [
-  { id: 'gemini-2.0-flash', name: 'Gemini 2.o Flash' },
-  { id: 'gemini-2.0-pro', name: 'Gemini 2.0 Pro' },
-  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 flash' },
-  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+const AVAILABLE_MODELS = [
+  { id: 'gemini-1.5-flash-latest', name: 'Gemini 1.5 Flash' },
+  { id: 'gemini-1.5-pro-latest', name: 'Gemini 1.5 Pro' },
+  // REASON: Using "latest" is often better for getting updates automatically.
+  // Updated model names to be more standard.
 ];
 
-const isProduction = process.env.NODE_ENV === 'production';
-const BACKEND_URL = isProduction 
-  ? 'https://genai-chatapp-backend.onrender.com' // <-- URL สำหรับ Production
-  : 'http://127.0.0.1:8000';                   // <-- URL สำหรับ Localhost
+const isProduction = import.meta.env.PROD; // Vite uses import.meta.env
+const BACKEND_URL = isProduction
+  ? 'https://genai-chatapp-backend.onrender.com'
+  : 'http://127.0.0.1:8000';
 
-// --- Main App Component ---
+// ==============================================================================
+// 2. MAIN APP COMPONENT (ควรมีแค่ Logic หลัก, UI ควรแยกเป็น Component ย่อย)
+// ==============================================================================
 function App() {
-  // --- States ---
+  // --- STATE MANAGEMENT ---
+  // REASON: รวม State ที่เกี่ยวกับแชทไว้ด้วยกัน ทำให้จัดการง่ายขึ้น
+  const [chatState, setChatState] = useState<{ [key in ChatMode]: Message[] }>({
+    general: [],
+    rag: [],
+    agent: [],
+  });
+  const [prompt, setPrompt] = useState('');
+  const [chatMode, setChatMode] = useState<ChatMode>('general');
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [selectedModel, setSelectedModel] = useState<string>(availableModels[0].id);
+
+  // --- App-wide states ---
+  const [selectedModel, setSelectedModel] = useState<string>(AVAILABLE_MODELS[0].id);
   const [personaLibrary, setPersonaLibrary] = useState<PersonaTemplate[]>([]);
-  const [chatMode, setChatMode] = useState<'general' | 'rag' | 'agent'>('general');
 
-  // State for each mode
-  const [generalChatHistory, setGeneralChatHistory] = useState<Message[]>([]);
-  const [generalPrompt, setGeneralPrompt] = useState<string>('');
-  const [generalImageFile, setGeneralImageFile] = useState<File | null>(null);
-  const [generalImagePreview, setGeneralImagePreview] = useState<string | null>(null);
-
-  const [ragChatHistory, setRagChatHistory] = useState<Message[]>([]);
-  const [ragPrompt, setRagPrompt] = useState<string>('');
+  // --- File states ---
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [ragFile, setRagFile] = useState<File | null>(null);
-  const [ragFileName, setRagFileName] = useState<string>('');
-  
-  // *** State ใหม่สำหรับ Agent ***
-  const [agentChatHistory, setAgentChatHistory] = useState<Message[]>([]);
-  const [agentPrompt, setAgentPrompt] = useState<string>('');
 
-  // --- Refs ---
+  // --- REFS ---
   const chatWindowRef = useRef<HTMLDivElement>(null);
-  const generalFileInputRef = useRef<HTMLInputElement>(null);
-  const ragFileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRefs = {
+    general: useRef<HTMLInputElement>(null),
+    rag: useRef<HTMLInputElement>(null),
+  };
+
+  // --- DATA FETCHING & EFFECTS ---
+  useEffect(() => {
+    const fetchPersonas = async () => {
+      try {
+        const response = await axios.get<PersonaTemplate[]>(`${BACKEND_URL}/api/get-prompts`);
+        setPersonaLibrary(response.data);
+      } catch (error) {
+        console.error("Could not fetch persona library:", error);
+      }
+    };
+    fetchPersonas();
+  }, []);
+
+  useEffect(() => {
+    chatWindowRef.current?.scrollTo({ top: chatWindowRef.current.scrollHeight, behavior: 'smooth' });
+  }, [chatState, isLoading]);
 
 
-   // Fetch personas from the backend when the component mounts
- useEffect(() => {
-   const fetchPersonas = async () => {
-     try {
-       const response = await axios.get<PersonaTemplate[]>(`${BACKEND_URL}/api/get-prompts`);
-       setPersonaLibrary(response.data);
-     } catch (error) {
-       console.error("Could not fetch persona library:", error);
-     }
-   };
-   fetchPersonas();
- }, []);
-  // --- useEffects (เหมือนเดิม) ---
-  useEffect(() => { /* ... Fetch personas ... */ }, []);
-  useEffect(() => { /* ... Auto-scroll ... */ }, [generalChatHistory, ragChatHistory, agentChatHistory, isLoading]);
+  // --- HANDLERS ---
+  // REASON: ใช้ useCallback เพื่อป้องกันการสร้างฟังก์ชันใหม่ทุกครั้งที่ re-render
+  // ซึ่งจะช่วยเพิ่มประสิทธิภาพ โดยเฉพาะเมื่อส่งฟังก์ชันเหล่านี้ไปยัง Component ลูก
+  const handleModeChange = useCallback((mode: ChatMode) => {
+    setChatMode(mode);
+    setPrompt(''); // Clear prompt when changing mode
+  }, []);
 
-  // --- Handlers ---
-  const handleModeChange = (mode: 'general' | 'rag' | 'agent') => setChatMode(mode);
-
-  const removeGeneralImage = () => {
-  setGeneralImageFile(null);
-  setGeneralImagePreview(null);
-  if (generalFileInputRef.current) generalFileInputRef.current.value = "";
-};
-  
-  // ... (Handlers อื่นๆ ส่วนใหญ่เหมือนเดิม) ...
-
-    // Handles selecting a new persona, which resets the chat to that persona's context
-  const handleSelectPersona = (personaId: string) => {
+  const handleSelectPersona = useCallback((personaId: string) => {
     if (!personaId) return;
     const selected = personaLibrary.find(p => p.id === personaId);
     if (selected) {
-      setGeneralChatHistory(selected.history);
-      setChatMode('general'); // Switch to general mode when a persona is selected
+      setChatState(prev => ({ ...prev, general: selected.history }));
+      setChatMode('general');
     }
-  };
+  }, [personaLibrary]);
 
-    // Handles file selection for the RAG mode
-  const handleRagFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
+  const handleFileChange = useCallback((e: ChangeEvent<HTMLInputElement>, mode: 'general' | 'rag') => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (mode === 'general') {
+      setImageFile(file);
+      setImagePreview(URL.createObjectURL(file));
+    } else {
       setRagFile(file);
-      setRagFileName(file.name);
-      setRagChatHistory([]); // Start a new chat session for the new document
+      setChatState(prev => ({ ...prev, rag: [] })); // New document, new session
     }
-  };
+  }, []);
+
+  const removeImage = useCallback(() => {
+    setImageFile(null);
+    setImagePreview(null);
+    if (fileInputRefs.general.current) fileInputRefs.general.current.value = "";
+  }, []);
+
+  // REASON: สร้างฟังก์ชันกลางสำหรับจัดการ Streaming API Call เพื่อลดโค้ดซ้ำซ้อน
+  const streamApiCall = async (endpoint: string, formData: FormData) => {
+    setIsLoading(true);
+
+    const userMessageText = chatMode === 'general'
+      ? (imageFile ? `[Image: ${imageFile.name}] ${prompt}` : prompt)
+      : prompt;
+
+    // Add user message and prepare for AI response
+    setChatState(prev => {
+        const newHistory = [...prev[chatMode], { sender: 'user', text: userMessageText }];
+        // For Agent mode, add a "Thinking" placeholder immediately
+        if (chatMode === 'agent') {
+            newHistory.push({ sender: 'ai', text: '', type: 'thought' });
+        } else {
+            newHistory.push({ sender: 'ai', text: '' });
+        }
+        return { ...prev, [chatMode]: newHistory };
+    });
+    setPrompt('');
+    if (chatMode === 'general') removeImage();
+
+    try {
+        const response = await fetch(`${BACKEND_URL}${endpoint}`, { method: 'POST', body: formData });
+        if (!response.body) throw new Error("Response body is null.");
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split('\n\n');
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    try {
+                        const dataStr = line.substring(6);
+                        if (!dataStr.trim()) continue;
+                        const data = JSON.parse(dataStr);
+
+                        if (data.error) {
+                            throw new Error(data.error);
+                        }
+
+                        if (data.text) {
+                            setChatState(prev => {
+                                const newHistory = [...prev[chatMode]];
+                                let lastMessage = newHistory[newHistory.length - 1];
+
+                                if (!lastMessage || lastMessage.sender !== 'ai') return prev; // Safety check
+
+                                if (chatMode === 'agent') {
+                                    if (data.type === 'thought' && lastMessage.type === 'thought') {
+                                        lastMessage.text += data.text;
+                                    } else if (data.type === 'final_answer_chunk') {
+                                        // If the last message was a thought, replace it with a final answer message
+                                        if (lastMessage.type === 'thought') {
+                                            newHistory.push({ sender: 'ai', text: data.text, type: 'final_answer' });
+                                        } else { // otherwise, append to the existing final answer
+                                            lastMessage.text += data.text;
+                                        }
+                                    }
+                                } else {
+                                    lastMessage.text += data.text;
+                                }
+
+                                return { ...prev, [chatMode]: newHistory };
+                            });
+                        }
+                    } catch (e) {
+                        console.error("Error parsing stream data:", e);
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        console.error(`Error fetching from ${endpoint}:`, error);
+        setChatState(prev => {
+            const newHistory = [...prev[chatMode]];
+            let lastMessage = newHistory[newHistory.length - 1];
+            if (lastMessage?.sender === 'ai') {
+                lastMessage.text = `Sorry, a connection error occurred: ${error instanceof Error ? error.message : 'Unknown error'}`;
+            }
+            return { ...prev, [chatMode]: newHistory };
+        });
+    } finally {
+        setIsLoading(false);
+    }
+};
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (isLoading) return;
-
-    if (chatMode === 'general') await handleGeneralSubmit();
-    else if (chatMode === 'rag') await handleRagSubmit();
-    else if (chatMode === 'agent') await handleAgentSubmit();
-  };
-
-  // Handles image selection for the General mode
-const handleGeneralImageChange = (e: ChangeEvent<HTMLInputElement>) => {
-   if (e.target.files && e.target.files[0]) {
-    const file = e.target.files[0];
-    setGeneralImageFile(file);
-    setGeneralImagePreview(URL.createObjectURL(file));
-  }
-};
-
-  // *** Handler ใหม่สำหรับ Agent Submit ***
-  // ... (handleGeneralSubmit และ handleRagSubmit เหมือนเดิม) ...
-
-  // Handles form submission for the General Chat mode
-const handleGeneralSubmit = async () => {
-  if (!generalPrompt.trim() && !generalImageFile) return;
-  setIsLoading(true);
-  const formData = new FormData();
-  formData.append('history', JSON.stringify(generalChatHistory));
-  formData.append('prompt', generalPrompt);
-  formData.append('model', selectedModel);
-  if (generalImageFile) {
-    formData.append('image', generalImageFile);
-  }
-  const userMessageText = generalImageFile ? `[Image: ${generalImageFile.name}] ${generalPrompt}` : generalPrompt;
-  setGeneralChatHistory(prev => [...prev, { sender: 'user', text: userMessageText }, { sender: 'ai', text: '' }]);
-  
-  // Reset inputs after submission
-  setGeneralPrompt('');
-  removeGeneralImage();
-  try {
-      const response = await fetch(`${BACKEND_URL}/api/generate-stream`, {
-          method: 'POST',
-          body: formData,
-      });
-      if (!response.body) return;
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      
-      let done = false;
-      while (!done) {
-          const { value, done: readerDone } = await reader.read();
-          done = readerDone;
-          const chunk = decoder.decode(value, { stream: true });
-          
-          const lines = chunk.split('\n\n');
-          for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                  const dataStr = line.substring(6);
-                  if (dataStr.trim()) {
-                      const data = JSON.parse(dataStr);
-                      if (data.text) {
-                          setGeneralChatHistory(prev => {
-                              const newHistory = [...prev];
-                              const lastMessage = newHistory[newHistory.length - 1];
-                              if (lastMessage?.sender === 'ai')
-                                 if (!lastMessage.text.endsWith(data.text)) 
-                                    {
-                                     lastMessage.text += data.text;
-                                   }
-                              return newHistory;
-                          });
-                      } else if (data.error) {
-                          // Handle error from stream
-                           setGeneralChatHistory(prev => {
-                              const newHistory = [...prev];
-                              const lastMessage = newHistory[newHistory.length - 1];
-                              if (lastMessage?.sender === 'ai') {
-                                  lastMessage.text = `Error: ${data.error}`;
-                              }
-                              return newHistory;
-                          });
-                      }
-                  }
-              }
-          }
-      }
-  } catch (error) {
-      console.error("Error fetching general chat response:", error);
-       setGeneralChatHistory(prev => {
-          const newHistory = [...prev];
-          const lastMessage = newHistory[newHistory.length - 1];
-          if (lastMessage?.sender === 'ai') {
-              lastMessage.text = "Sorry, a connection error occurred.";
-          }
-          return newHistory;
-      });
-  } finally {
-      setIsLoading(false);
-  }
-};
-
-  // Handles form submission for the RAG Chat mode
-
-const handleRagSubmit = async () => {
-  if (!ragPrompt.trim() || !ragFile) {
-    alert("Please upload a PDF file and ask a question.");
-    return;
-  }
-  setIsLoading(true);
-
-  const formData = new FormData();
-  formData.append('question', ragPrompt);
-  formData.append('model', selectedModel);
-  formData.append('file', ragFile);
-
-  // เพิ่มข้อความผู้ใช้และเตรียมข้อความว่างสำหรับ AI
-  setRagChatHistory(prev => [...prev, { sender: 'user', text: ragPrompt }, { sender: 'ai', text: '' }]);
-  setRagPrompt('');
-
-  try {
-    const response = await fetch(`${BACKEND_URL}/api/ask-document-stream`, {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (!response.body) {
-      throw new Error("ReadableStream not supported in this browser.");
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let done = false;
-    let buffer = '';
-
-    while (!done) {
-      const { value, done: readerDone } = await reader.read();
-      done = readerDone;
-      buffer += decoder.decode(value || new Uint8Array(), { stream: true });
-
-      // แบ่ง buffer ตามตัวแบ่งของ SSE (\n\n)
-      const parts = buffer.split('\n\n');
-
-      // ประมวลผลทุกส่วนที่สมบูรณ์ (ยกเว้นส่วนสุดท้าย)
-      for (let i = 0; i < parts.length - 1; i++) {
-        const line = parts[i];
-
-        if (line.startsWith('data: ')) {
-          const dataStr = line.substring(6).trim();
-
-          if (dataStr) {
-            try {
-              const data = JSON.parse(dataStr);
-
-              if (data.text) {
-                setRagChatHistory(prev => {
-                  const newHistory = [...prev];
-                  const lastMessage = newHistory[newHistory.length - 1];
-                  if (lastMessage?.sender === 'ai') {
-                    // ป้องกันข้อความซ้ำ
-                    if (!lastMessage.text.endsWith(data.text)) {
-                      lastMessage.text += data.text;
-                    }
-                  }
-                  return newHistory;
-                });
-              } else if (data.error) {
-                setRagChatHistory(prev => {
-                  const newHistory = [...prev];
-                  const lastMessage = newHistory[newHistory.length - 1];
-                  if (lastMessage?.sender === 'ai') {
-                    lastMessage.text = `Error: ${data.error}`;
-                  }
-                  return newHistory;
-                });
-              }
-            } catch (error) {
-              console.error("Error parsing JSON stream chunk:", error, dataStr);
-            }
-          }
-        }
-      }
-
-      // เก็บข้อความที่ยังไม่สมบูรณ์ไว้เพื่อประมวลผลในรอบถัดไป
-      buffer = parts[parts.length - 1];
-    }
-  } catch (error) {
-    console.error("Error fetching RAG response:", error);
-    setRagChatHistory(prev => {
-      const newHistory = [...prev];
-      const lastMessage = newHistory[newHistory.length - 1];
-      if (lastMessage?.sender === 'ai') {
-        lastMessage.text = "Sorry, a connection error occurred.";
-      }
-      return newHistory;
-    });
-  } finally {
-    setIsLoading(false);
-  }
-};
-
-// ใน App() componen
-
-// ใน App() component
-
-  // *** Handler ใหม่สำหรับ Agent Submit (เวอร์ชันสมบูรณ์แบบ) ***
-  const handleAgentSubmit = async () => {
-    if (!agentPrompt.trim()) return;
-    setIsLoading(true);
+    if (isLoading || !prompt.trim()) return;
 
     const formData = new FormData();
-    formData.append('question', agentPrompt);
     formData.append('model', selectedModel);
 
-    // 1. เพิ่ม Prompt ของผู้ใช้
-    setAgentChatHistory(prev => [...prev, { sender: 'user', text: agentPrompt }]);
-    // 2. เพิ่ม Placeholder สำหรับ "ความคิด" (Thinking Log)
-    // เราจะใช้กล่องนี้กล่องเดียวสำหรับเก็บ 'thought' ทั้งหมด
-    setAgentChatHistory(prev => [...prev, { sender: 'ai', text: '', type: 'thought' }]);
-    
-    setAgentPrompt('');
-
-    try {
-      const response = await fetch(`${BACKEND_URL}/api/run-agent-stream`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.body) return;
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let done = false;
-      let buffer = '';
-
-      while (!done) {
-        const { value, done: readerDone } = await reader.read();
-        done = readerDone;
-        buffer += decoder.decode(value, { stream: true });
-        
-        const lines = buffer.split('\n\n');
-        // ประมวลผลทุกบรรทัดที่สมบูรณ์ ยกเว้นบรรทัดสุดท้ายที่อาจจะยังมาไม่ครบ
-        const fullLines = lines.slice(0, -1);
-        buffer = lines[lines.length - 1]; // เก็บส่วนที่ยังไม่ครบไว้
-
-        for (const line of fullLines) {
-          if (line.startsWith('data: ')) {
-            const dataStr = line.substring(6);
-            if (dataStr.trim()) {
-              const data = JSON.parse(dataStr);
-
-              if (data.text) {
-                setAgentChatHistory(prev => {
-                  const newHistory = [...prev];
-                  const lastMessage = newHistory[newHistory.length - 1];
-
-                  if (lastMessage?.sender !== 'ai') return newHistory;
-                      // ตรวจสอบว่าข้อความใหม่ไม่ได้ถูกเพิ่มเข้าไปแล้ว
-                  if (lastMessage.text.endsWith(data.text)) {
-                      return newHistory; // ถ้าซ้ำ ให้ข้ามไปเลย
-                  }
-
-                  // กรณีที่ 1: ได้รับ "ความคิด"
-                  if (data.type === 'thought' && lastMessage.type === 'thought') {
-                    
-                    // ต่อท้ายข้อความลงในกล่อง "Thinking..." เดิม
-                    lastMessage.text += data.text + '\n'; // เพิ่ม \n เพื่อขึ้นบรรทัดใหม่
-                  } 
-                  // กรณีที่ 2: ได้รับ "คำตอบสุดท้ายชิ้นแรก"
-                  else if (data.type === 'final_answer_chunk' && lastMessage.type === 'thought') {
-                    // สร้างกล่องข้อความใหม่สำหรับคำตอบสุดท้ายโดยเฉพาะ
-                    return [...newHistory, { sender: 'ai', text: data.text, type: 'final_answer' }];
-                  }
-                  // กรณีที่ 3: ได้รับ "คำตอบสุดท้ายชิ้นต่อๆมา"
-                  else if (data.type === 'final_answer_chunk' && lastMessage.type === 'final_answer') {
-                    // ต่อท้ายข้อความลงในกล่อง "คำตอบสุดท้าย"
-                    lastMessage.text += data.text;
-                  }
-                  
-                  return newHistory;
-                });
-              } else if (data.error) {
-                // ... จัดการ error ...
-              }
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching agent response:", error);
-      // ... จัดการ error ...
-    } finally {
-      setIsLoading(false);
+    if (chatMode === 'general') {
+      formData.append('history', JSON.stringify(chatState.general));
+      formData.append('prompt', prompt);
+      if (imageFile) formData.append('image', imageFile);
+      await streamApiCall('/api/generate-stream', formData);
+    }
+    else if (chatMode === 'rag') {
+      if (!ragFile) { alert("Please select a PDF document first."); return; }
+      formData.append('question', prompt);
+      formData.append('file', ragFile);
+      await streamApiCall('/api/ask-document-stream', formData);
+    }
+    else if (chatMode === 'agent') {
+      formData.append('question', prompt);
+      await streamApiCall('/api/run-agent-stream', formData);
     }
   };
 
-  // --- Render Logic (อัปเดตให้รองรับ 3 โหมด) ---
-  const currentChatHistory = 
-    chatMode === 'general' ? generalChatHistory :
-    chatMode === 'rag' ? ragChatHistory :
-    agentChatHistory;
 
-  const currentPrompt = 
-    chatMode === 'general' ? generalPrompt :
-    chatMode === 'rag' ? ragPrompt :
-    agentPrompt;
+  // --- RENDER LOGIC ---
+  const currentChatHistory = chatState[chatMode];
 
-  const setCurrentPrompt = 
-    chatMode === 'general' ? setGeneralPrompt :
-    chatMode === 'rag' ? setRagPrompt :
-    setAgentPrompt;
+  // This part would be a separate <Header /> component
+  const renderHeader = () => (
+    <div className="app-header">
+      <div className="mode-toggle">
+        <button onClick={() => handleModeChange('general')} className={chatMode === 'general' ? 'active' : ''}>Chat</button>
+        <button onClick={() => handleModeChange('rag')} className={chatMode === 'rag' ? 'active' : ''}>Document</button>
+        <button onClick={() => handleModeChange('agent')} className={chatMode === 'agent' ? 'active' : ''}>Agent</button>
+      </div>
+      <div className="header-controls">
+        <select onChange={e => handleSelectPersona(e.target.value)} value="" className="persona-selector">
+          <option value="" disabled>-- Change Persona --</option>
+          {personaLibrary.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
+        </select>
+        <select value={selectedModel} onChange={e => setSelectedModel(e.target.value)} disabled={isLoading} className="model-selector">
+          {AVAILABLE_MODELS.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}
+        </select>
+      </div>
+    </div>
+  );
 
+  // This part would be a separate <ChatWindow /> component
+  const renderChatWindow = () => (
+    <div className="chat-window" ref={chatWindowRef}>
+      {currentChatHistory.map((msg, index) => (
+        <div key={index} className={`message ${msg.sender} ${msg.type === 'thought' ? 'thought-message' : ''}`}>
+          {msg.type === 'thought' && <span className="thought-label">Thinking...</span>}
+          <ReactMarkdown>{msg.text}</ReactMarkdown>
+        </div>
+      ))}
+      {isLoading && currentChatHistory[currentChatHistory.length - 1]?.sender === 'user' && (
+        <div className="message ai"><div className="typing-indicator"><span></span><span></span><span></span></div></div>
+      )}
+    </div>
+  );
+  
+  // This part would be a separate <InputArea /> component
+  const renderInputArea = () => (
+     <div className="input-area">
+      {chatMode === 'rag' && (
+        <div className="file-controls">
+          <button onClick={() => fileInputRefs.rag.current?.click()} className="upload-btn">
+            {ragFile ? `✔ ${ragFile.name}` : 'Select PDF Document'}
+          </button>
+          <input type="file" ref={fileInputRefs.rag} onChange={(e) => handleFileChange(e, 'rag')} accept=".pdf" style={{ display: 'none' }} />
+        </div>
+      )}
+      {chatMode === 'general' && imagePreview && (
+        <div className="image-preview-container">
+          <img src={imagePreview} alt="Preview" className="image-preview" />
+          <button onClick={removeImage} className="remove-image-btn">&times;</button>
+        </div>
+      )}
+      <form className="chat-input-form" onSubmit={handleSubmit}>
+        {chatMode === 'general' && (
+          <>
+            <button type="button" onClick={() => fileInputRefs.general.current?.click()} className="attach-btn" title="Attach Image">📎</button>
+            <input type="file" ref={fileInputRefs.general} onChange={(e) => handleFileChange(e, 'general')} accept="image/*" style={{ display: 'none' }} />
+          </>
+        )}
+        <input
+          type="text"
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          placeholder={
+            chatMode === 'agent' ? 'Give me a complex task...' :
+            chatMode === 'rag' ? (ragFile ? 'Ask about the document...' : 'Please select a document first.') :
+            'Ask anything...'
+          }
+          disabled={isLoading || (chatMode === 'rag' && !ragFile)}
+        />
+        <button type="submit" disabled={isLoading || !prompt.trim()}>Send</button>
+      </form>
+    </div>
+  );
 
   return (
     <div className="app-container">
-      {/* --- Header Area (เพิ่มปุ่ม Agent) --- */}
-      <div className="app-header">
-        <div className="mode-toggle">
-          <button onClick={() => handleModeChange('general')} className={chatMode === 'general' ? 'active' : ''}>Chat</button>
-          <button onClick={() => handleModeChange('rag')} className={chatMode === 'rag' ? 'active' : ''}>Document</button>
-          <button onClick={() => handleModeChange('agent')} className={chatMode === 'agent' ? 'active' : ''}>Agent</button>
-        </div>
-        <div className="header-controls">
-           <select 
-   onChange={e => handleSelectPersona(e.target.value)} 
-   value="" // ตั้งเป็นค่าว่างเสมอเพื่อให้เลือกซ้ำได้
-   className="persona-selector"
- >
-   <option value="" disabled>-- Change Persona --</option>
-   {personaLibrary.map((p) => (
-     <option key={p.id} value={p.id}>{p.title}</option>
-   ))}
- </select>
- 
- <select 
-   value={selectedModel} 
-   onChange={e => setSelectedModel(e.target.value)} 
-   disabled={isLoading}
-   className="model-selector"
- >
-   {availableModels.map(model => (
-     <option key={model.id} value={model.id}>{model.name}</option>
-   ))}
- </select>
-        </div>
-      </div>
-
-      {/* --- Chat Display Area (เพิ่ม class สำหรับ thought) --- */}
-      <div className="chat-window" ref={chatWindowRef}>
-        {currentChatHistory.map((msg, index) => (
-          <div key={index} className={`message ${msg.sender} ${msg.type === 'thought' ? 'thought-message' : ''}`}>
-            {msg.type === 'thought' && <span className="thought-label">Thinking...</span>}
-            <ReactMarkdown>{msg.text}</ReactMarkdown>
-          </div>
-        ))}
-        {isLoading && <div className="message ai"><div className="typing-indicator"><span></span><span></span><span></span></div></div>}
-      </div>
-
-      {/* --- Input Area (อัปเดตให้รองรับ Agent) --- */}
-      <div className="input-area">
-       {chatMode === 'rag' && (
-  <div className="rag-controls">
-    <button onClick={() => ragFileInputRef.current?.click()} className="upload-btn">
-      {ragFileName ? `✔ ${ragFileName}` : 'Select PDF Document'}
-    </button>
-    <input type="file" ref={ragFileInputRef} onChange={handleRagFileChange} accept=".pdf" style={{ display: 'none' }} />
-  </div>
-)}
-        
-{chatMode === 'general' && generalImagePreview && (
-     <div className="image-preview-container">
-        <img src={generalImagePreview} alt="Preview" className="image-preview" />
-        <button onClick={removeGeneralImage} className="remove-image-btn">&times;</button>
-    </div>
-)}
-       {chatMode === 'rag' && (
-  <div className="rag-controls">
-    <button onClick={() => ragFileInputRef.current?.click()} className="upload-btn">
-      {ragFileName ? `✔ ${ragFileName}` : 'Select PDF Document'}
-    </button>
-    <input type="file" ref={ragFileInputRef} onChange={handleRagFileChange} accept=".pdf" style={{ display: 'none' }} />
-  </div>
-)}
-        
-{chatMode === 'general' && generalImagePreview && (
-     <div className="image-preview-container">
-        <img src={generalImagePreview} alt="Preview" className="image-preview" />
-        <button onClick={removeGeneralImage} className="remove-image-btn">&times;</button>
-    </div>
-)}
-
-        <form className="chat-input-form" onSubmit={handleSubmit}>
-          {chatMode === 'general' && (
-            <>
-              <button type="button" onClick={() => generalFileInputRef.current?.click()} className="attach-btn" title="Attach Image">📎</button>
-              <input type="file" ref={generalFileInputRef} onChange={handleGeneralImageChange} accept="image/*" style={{ display: 'none' }} />
-            </>
-          )}
-
-
-          <input
-            type="text"
-            value={currentPrompt}
-            onChange={(e) => setCurrentPrompt(e.target.value)}
-            placeholder={
-              chatMode === 'agent' ? 'Give me a complex task...' :
-              chatMode === 'rag' ? (ragFile ? 'Ask about the document...' : 'Please select a document.') : 
-              'Ask anything...'
-            }
-            disabled={isLoading || (chatMode === 'rag' && !ragFile)}
-          />
-          <button type="submit" disabled={isLoading || !currentPrompt.trim()}>Send</button>
-        </form>
-      </div>
+      {renderHeader()}
+      {renderChatWindow()}
+      {renderInputArea()}
     </div>
   );
 }

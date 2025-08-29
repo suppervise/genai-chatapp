@@ -1,312 +1,222 @@
-/* --- การตั้งค่าพื้นฐาน --- */
+/* App.css (Refactored) */
+
+/* ==========================================================================
+   1. CSS VARIABLES (Theme & Layout Configuration)
+   REASON: Centralizes theme colors, fonts, and spacing for easy maintenance.
+   ========================================================================== */
+:root {
+  --font-primary: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  
+  /* Colors */
+  --color-bg-deep: #121212;
+  --color-bg-main: #1e1e1e;
+  --color-bg-light: #2a2a2a;
+  --color-surface: #333333;
+  --color-border: #444444;
+
+  --color-text-primary: #e0e0e0;
+  --color-text-secondary: #a0a0a0;
+  
+  --color-accent-primary: #377dff;
+  --color-accent-primary-hover: #2b68d9;
+  --color-user-message-bg: #0050c8;
+
+  /* Spacing & Sizing */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 20px;
+  --spacing-xl: 24px;
+
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+
+  /* Transitions */
+  --transition-fast: all 0.2s ease-in-out;
+}
+
+/* ==========================================================================
+   2. GLOBAL STYLES & RESETS
+   ========================================================================== */
 * {
   box-sizing: border-box;
-}
-
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  background-color: #121212; /* พื้นหลังสีดำ */
-  color: #e0e0e0; /* ตัวหนังสือสีขาวนวล */
   margin: 0;
-  height: 100vh;
-  width: 100vw;
-  overflow: hidden; /* ป้องกันการ scroll ของ body */
-}
-
-/* --- Layout หลัก --- */
-.app-container {
-  width: 100%;
-  height: 100vh; /* เต็มความสูงจอ */
-  background-color: #1e1e1e; /* สีพื้นหลังแอปเข้มกว่า body เล็กน้อย */
-  display: flex;
-  flex-direction: column;
-}
-
-/* --- หน้าต่างแชท --- */
-.chat-window {
-  flex-grow: 1; /* ทำให้ element นี้ขยายจนเต็มพื้นที่ที่เหลือ */
-  padding: 20px;
-  overflow-y: auto; /* มี scrollbar เฉพาะส่วนนี้เมื่อข้อความยาวเกิน */
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-/* --- กล่องข้อความ --- */
-.message {
-  padding: 12px 18px;
-  border-radius: 20px;
-  max-width: 75%;
-  word-wrap: break-word;
-  line-height: 1.5;
-}
-
-.message p {
-  margin: 0;
-}
-
-.message.user {
-  background-color: #043389; /* สีฟ้าสดใส */
-  color: white;
-  align-self: flex-end;
-  border-bottom-right-radius: 5px;
-}
-
-.message.ai {
-  background-color: #333333; /* สีเทาเข้ม */
-  color: #f5f5f5;
-  align-self: flex-start;
-  border-bottom-left-radius: 5px;
-}
-
-/* --- สไตล์สำหรับ Markdown ที่ถูก render --- */
-.message.ai h1, .message.ai h2, .message.ai h3 {
-  margin-top: 0;
-}
-.message.ai ul, .message.ai ol {
-  padding-left: 20px;
-}
-.message.ai code {
-  background-color: #444;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: 'Courier New', Courier, monospace;
-}
-.message.ai pre {
-  background-color: #282c34;
-  padding: 10px;
-  border-radius: 8px;
-  overflow-x: auto;
-}
-.message.ai pre code {
-  background-color: transparent;
   padding: 0;
 }
 
+body {
+  font-family: var(--font-primary);
+  background-color: var(--color-bg-deep);
+  color: var(--color-text-primary);
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
 
-/* --- ฟอร์มพิมพ์ข้อความ --- */
-.chat-input-form {
+/* ==========================================================================
+   3. APP LAYOUT
+   ========================================================================== */
+.app-container {
   display: flex;
-  padding: 15px;
-  border-top: 1px solid #333; /* เส้นขอบสีเทาเข้ม */
-  background-color: #1e1e1e;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+  background-color: var(--color-bg-main);
 }
 
-.chat-input-form input {
+.chat-window {
   flex-grow: 1;
-  background-color: #333333;
-  color: #f5f5f5;
-  border: 1px solid #444;
-  border-radius: 20px;
-  padding: 12px 18px;
-  font-size: 16px;
-  margin-right: 10px;
+  padding: var(--spacing-lg);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
 }
 
-.chat-input-form input:focus {
-  outline: none;
-  border-color: #062050;
-}
-
-.chat-input-form button {
-  background-color: #377dff;
-  color: white;
-  border: none;
-  border-radius: 20px;
-  padding: 12px 24px;
-  font-size: 16px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.chat-input-form button:hover {
-  background-color: #2b68d9;
-}
-
-.chat-input-form button:disabled {
-  background-color: #555;
-  cursor: not-allowed;
-}
-/* ... CSS เดิมทั้งหมดของคุณ ... */
-
-/* --- เพิ่ม CSS สำหรับ Header และส่วนควบคุมใหม่ --- */
+/* ==========================================================================
+   4. HEADER & CONTROLS
+   ========================================================================== */
 .app-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 15px;
-  border-bottom: 1px solid #333;
-  background-color: #1e1e1e;
-  flex-shrink: 0; /* ป้องกันไม่ให้ header หดตัว */
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
 }
 
-.new-chat-btn {
-  background-color: transparent;
-  color: #e0e0e0;
-  border: 1px solid #555;
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 14px;
-  cursor: pointer;
+.header-controls {
   display: flex;
   align-items: center;
-  gap: 8px;
-  transition: background-color 0.2s, border-color 0.2s;
+  gap: var(--spacing-md);
 }
 
-.new-chat-btn:hover {
-  background-color: #333;
-  border-color: #777;
-}
-
-.model-selector {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.model-selector label {
-  font-size: 14px;
-}
-
-.model-selector select {
-  background-color: #333;
-  color: #f5f5f5;
-  border: 1px solid #555;
-  border-radius: 8px;
-  padding: 8px;
-  font-size: 14px;
-}
-
-/* --- เพิ่ม CSS สำหรับ Typing Indicator --- */
-.typing-indicator {
-  display: inline-block;
-  padding: 10px;
-}
-.typing-indicator span {
-  height: 8px;
-  width: 8px;
-  background-color: #999;
-  border-radius: 50%;
-  display: inline-block;
-  margin: 0 1px;
-  animation: wave 1.4s infinite;
-}
-.typing-indicator span:nth-child(2) {
-  animation-delay: 0.2s;
-}
-.typing-indicator span:nth-child(3) {
-  animation-delay: 0.4s;
-}
-@keyframes wave {
-  0%, 60%, 100% {
-    transform: translateY(0);
-  }
-  30% {
-    transform: translateY(-8px);
-  }
-}
-
-/* แก้ไขเล็กน้อยเพื่อให้ chat-window ไม่ทับ header */
-.chat-window {
-  /* ... CSS เดิม ... */
-  padding-bottom: 90px; /* เพิ่ม padding ด้านล่างเผื่อ input form */
-}
-
-/* แก้ไขเล็กน้อยเพื่อให้ input form อยู่ล่างสุดจริงๆ */
-.chat-input-form {
-  /* ... CSS เดิม ... */
-  position: absolute; /* ทำให้ลอยอยู่ด้านล่าง */
-  bottom: 0;
-  width: 100%;
-}
-
-/* --- CSS สำหรับ Input Area และการอัปโหลดรูป --- */
-.input-area {
-  padding: 15px;
-  border-top: 1px solid #333;
-  background-color: #1e1e1e;
-}
-
-.image-preview-container {
-  position: relative;
-  display: inline-block;
-  margin-bottom: 10px;
-}
-
-.image-preview {
-  max-height: 100px;
-  border-radius: 8px;
-  border: 1px solid #555;
-}
-
-.remove-image-btn {
-  position: absolute;
-  top: -5px;
-  right: -5px;
-  background: #333;
-  color: white;
-  border: 1px solid white;
-  border-radius: 50%;
-  width: 20px;
-  height: 20px;
-  line-height: 18px;
-  text-align: center;
-  cursor: pointer;
-  font-size: 14px;
-}
-
-.chat-input-form {
-  padding: 0; /* ย้าย padding ไปที่ .input-area แล้ว */
-  border-top: none;
-}
-
-.attach-btn {
-  background: none;
-  border: none;
-  color: #8e8e8e;
-  font-size: 24px;
-  cursor: pointer;
-  padding: 0 10px;
-}
-
-/* ... CSS เดิมทั้งหมด ... */
-
-/* --- CSS for Mode Toggle --- */
 .mode-toggle {
   display: flex;
-  background-color: #333;
-  border-radius: 8px;
-  padding: 4px;
+  background-color: var(--color-bg-light);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-xs);
 }
 
 .mode-toggle button {
   background-color: transparent;
   border: none;
-  color: #a0a0a0;
-  padding: 8px 16px;
-  border-radius: 6px;
+  color: var(--color-text-secondary);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 14px;
-  transition: all 0.2s ease-in-out;
+  font-weight: 500;
+  transition: var(--transition-fast);
+}
+
+.mode-toggle button:hover {
+    background-color: var(--color-surface);
 }
 
 .mode-toggle button.active {
-  background-color: #555;
-  color: #fff;
-  font-weight: 600;
+  background-color: var(--color-surface);
+  color: var(--color-text-primary);
 }
 
-/* --- CSS for RAG Controls --- */
-.rag-controls {
-  padding: 0 15px 10px;
+.persona-selector, .model-selector {
+  background-color: var(--color-surface);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-sm);
+  font-size: 14px;
+}
+
+/* ==========================================================================
+   5. CHAT MESSAGES
+   ========================================================================== */
+.message {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--radius-lg);
+  max-width: 80%;
+  word-wrap: break-word;
+  line-height: 1.5;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.message.user {
+  background-color: var(--color-user-message-bg);
+  color: white;
+  align-self: flex-end;
+  border-bottom-right-radius: var(--radius-sm);
+}
+
+.message.ai {
+  background-color: var(--color-surface);
+  color: var(--color-text-primary);
+  align-self: flex-start;
+  border-bottom-left-radius: var(--radius-sm);
+}
+
+/* --- Agent's Thought Message --- */
+.message.thought-message {
+  background-color: #282c34;
+  border-left: 4px solid #5c6bc0;
+  color: #abb2bf;
+  font-style: italic;
+  font-size: 0.95em;
+  white-space: pre-wrap;
+}
+
+.thought-label {
+  display: block;
+  font-weight: bold;
+  font-style: normal;
+  color: #98c379;
+  margin-bottom: var(--spacing-sm);
+  font-size: 0.9em;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* --- Typing Indicator --- */
+.typing-indicator span {
+  height: 8px; width: 8px;
+  background-color: var(--color-text-secondary);
+  border-radius: 50%;
+  display: inline-block;
+  margin: 0 1px;
+  animation: wave 1.4s infinite;
+}
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes wave {
+  0%, 60%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-8px); }
+}
+
+
+/* ==========================================================================
+   6. INPUT AREA
+   ========================================================================== */
+.input-area {
+  padding: var(--spacing-md);
+  border-top: 1px solid var(--color-border);
+  background-color: var(--color-bg-main);
+  flex-shrink: 0;
+}
+
+.file-controls {
+  margin-bottom: var(--spacing-md);
 }
 
 .upload-btn {
-  background-color: #377dff;
+  background-color: var(--color-accent-primary);
   color: white;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 10px 15px;
   width: 100%;
   cursor: pointer;
@@ -314,23 +224,90 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: var(--transition-fast);
 }
-.message.thought-message {
-  background-color: #282c34; /* สีพื้นหลังเหมือนโค้ดบล็อก */
-  border-left: 4px solid #5c6bc0; /* เส้นขอบสีม่วงอมน้ำเงิน */
-  color: #abb2bf; /* สีตัวหนังสือสีเทาอ่อน */
-  font-style: italic;
-  font-size: 0.95em; /* ทำให้ตัวหนังสือเล็กลงเล็กน้อย */
-  white-space: pre-wrap; /* รักษาระยะเว้นวรรคและขึ้นบรรทัดใหม่ */
+.upload-btn:hover {
+  background-color: var(--color-accent-primary-hover);
 }
 
-.thought-label {
-  display: block;
-  font-weight: bold;
-  font-style: normal;
-  color: #98c379; /* สีเขียวมิ้นท์ */
-  margin-bottom: 8px;
-  font-size: 0.9em;
-  text-transform: uppercase; /* ทำให้เป็นตัวพิมพ์ใหญ่ */
-  letter-spacing: 1px;
+.image-preview-container {
+  position: relative;
+  display: inline-block;
+  margin-bottom: var(--spacing-sm);
+}
+
+.image-preview {
+  max-height: 100px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+}
+
+.remove-image-btn {
+  position: absolute;
+  top: -5px; right: -5px;
+  background: var(--color-surface);
+  color: white;
+  border: 1px solid white;
+  border-radius: 50%;
+  width: 20px; height: 20px;
+  line-height: 18px;
+  text-align: center;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.chat-input-form {
+  display: flex;
+  gap: var(--spacing-md);
+  align-items: center;
+}
+
+.attach-btn {
+  background: none; border: none;
+  color: var(--color-text-secondary);
+  font-size: 24px;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+.attach-btn:hover {
+    color: var(--color-text-primary);
+}
+
+
+.chat-input-form input {
+  flex-grow: 1;
+  background-color: var(--color-bg-light);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 12px 18px;
+  font-size: 16px;
+  transition: var(--transition-fast);
+}
+
+.chat-input-form input:focus {
+  outline: none;
+  border-color: var(--color-accent-primary);
+  background-color: var(--color-bg-main);
+}
+
+.chat-input-form button[type="submit"] {
+  background-color: var(--color-accent-primary);
+  color: white;
+  border: none;
+  border-radius: var(--radius-lg);
+  padding: 12px var(--spacing-xl);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.chat-input-form button[type="submit"]:hover {
+  background-color: var(--color-accent-primary-hover);
+}
+
+.chat-input-form button:disabled {
+  background-color: var(--color-surface);
+  cursor: not-allowed;
 }
